@@ -5,23 +5,33 @@
 #include <string>
 #include <vector>
 #include "qapplication.h"
+#include "qbrush.h"
+#include "qcolor.h"
+#include "qcoreapplication.h"
+#include "qfont.h"
+#include "qfontmetrics.h"
 #include "qimage.h"
 #include "qnamespace.h"
+#include "qpaintdevice.h"
 #include "qpen.h"
 #include "third_party/json/single_include/nlohmann/json.hpp"
 #include <QApplication>
 #include <QImage>
 #include <QPainter>
 #include <QColor>
+#include <QString>
+#include <QColor>
 
 using json = nlohmann::json;
 
 struct Floor {
-    const int sizeFront,
-        sizeBack,
-        sizeLeft,
-        sizeRight;
+    unsigned int sizeFront,
+                 sizeBack,
+                 sizeLeft,
+                 sizeRight;
     Floor(json);
+    unsigned int getHeight() {return sizeFront + sizeBack;}
+    unsigned int getWidth() {return sizeLeft + sizeRight;}
 };
 
 Floor::Floor(json j) : sizeFront(j["SizeFront"]),
@@ -140,10 +150,37 @@ Settings::Settings(json j) {
     showTimestamps = j["ShowTimestamps"];
 }
 
+// Function to calculate the relative luminance of a color
+double calculateLuminance(const QColor &color) {
+    double r = color.redF();
+    double g = color.greenF();
+    double b = color.blueF();
+
+    // Apply gamma correction
+    r = (r <= 0.03928) ? r / 12.92 : std::pow((r + 0.055) / 1.055, 2.4);
+    g = (g <= 0.03928) ? g / 12.92 : std::pow((g + 0.055) / 1.055, 2.4);
+    b = (b <= 0.03928) ? b / 12.92 : std::pow((b + 0.055) / 1.055, 2.4);
+
+    // Calculate relative luminance
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+// Function to determine text color based on background color
+Qt::GlobalColor getTextColor(const QColor &bgColor) {
+    double luminance = calculateLuminance(bgColor);
+    return (luminance > 0.5) ? Qt::black : Qt::white;
+}
+
 int main(int argc, char* argv[]) {
-    std::ifstream f("../OneChance.choreo");
+    if (argc < 2) {
+        std::cerr << "Please provide file path!" << std::endl;
+        return EXIT_FAILURE;
+    }
+
+    std::ifstream f(argv[1]);
     json data = json::parse(f);
     Floor floor{data["Floor"]};
+    Settings setting{data["Settings"]};
 
     std::vector<std::shared_ptr<Role>> roles;
     for (const auto r : data["Roles"]) {
@@ -160,30 +197,96 @@ int main(int argc, char* argv[]) {
         scenes.push_back(Scene{s, dancers});
     }
 
-    Scene& scne = scenes[0];
-
-    std::vector<double> x;
-    std::vector<double> y;
-    for (const auto pos : scne.positions) {
-        x.push_back(pos.x);
-        y.push_back(pos.y);
-    }
-
     QApplication app(argc, argv);
-    int width = 700, height = 700;
-    QImage image(width, height, QImage::Format_ARGB32);
-    image.fill(Qt::white);
+    unsigned int border = 60;
+    double px_m = 100;
+    unsigned int imWidth = px_m * floor.getWidth() + 2*border,
+                 imHeight = px_m * floor.getHeight() + 2*border;
 
-    QPainter painter(&image);
-    painter.setRenderHint(QPainter::Antialiasing);
+    for (const Scene scene : scenes) {
+        QImage image(imWidth, imHeight, QImage::Format_ARGB32);
+        image.fill(Qt::white);
 
-    painter.setPen(QPen(Qt::blue, 5));
-    painter.setBrush(QBrush(Qt::red));
-    painter.drawRect(100, 100, 400, 300);
+        QPainter painter(&image);
+        // painter.setRenderHint(QPainter::Antialiasing);
 
-    painter.end();
+        QColor borderColor("#3d7e2d"),
+               fillColor("#f0f0f0"),
+               lineColor("#a9a9a9");
 
-    image.save("rect.jpg", "JPG");
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QBrush(fillColor));
+        painter.drawRect(border, border, imWidth-2*border, imHeight-2*border);
+        painter.setPen(QPen(lineColor, 2));
+        for (int x = border + px_m; x < floor.getWidth()*px_m; x += px_m) {
+            if (x == imWidth/2) {continue;}
+            painter.drawLine(x, border, x, imHeight-border);
+        }
+        for (int y = border + px_m; y < floor.getHeight()*px_m; y += px_m) {
+            if (y == imHeight/2) {continue;}
+            painter.drawLine(border, y, imWidth - border, y);
+        }
+        painter.setPen(QPen(borderColor, 5));
+        painter.setBrush(Qt::NoBrush);
+        painter.drawRect(border, border, imWidth-2*border, imHeight-2*border);
+        painter.drawLine(border, imHeight/2, imWidth - border, imHeight/2);  // horizontal
+        painter.drawLine(imWidth/2, border, imWidth/2, imHeight-border);  // vertical
 
+        QFont dancerFont = painter.font();
+        dancerFont.setPixelSize(px_m*.4);
+        QFont annotationFont = painter.font();
+        annotationFont.setPixelSize(px_m*.3);
+        QFontMetrics fm(annotationFont);
+        int diameter = px_m,
+            annotationOffset = px_m/10;
+        for (const auto pos : scene.positions) {
+            QColor col(pos.dancer->color.c_str());
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(QBrush(col));
+            int x = border + (floor.sizeLeft + pos.x) * px_m,
+                y = border + (floor.sizeBack - pos.y) * px_m;
+            painter.drawEllipse(x - diameter/2., y - diameter/2,diameter,diameter);
+            painter.setPen(QPen(getTextColor(col)));
+            painter.setFont(dancerFont);
+            painter.drawText(QRect(x - diameter/2., y - diameter/2, diameter, diameter),
+                    Qt::AlignCenter,
+                    pos.dancer->shortcut.c_str());
+
+            painter.setPen(QPen(Qt::black));
+            painter.setFont(annotationFont);
+            if (pos.y != 0) {
+                QString text = QString::number(std::abs(pos.y));
+                int textWidth = fm.horizontalAdvance(text);
+                int drawY = y - fm.height()/2 + fm.ascent();
+                painter.drawText(border + annotationOffset, drawY, text);
+                painter.drawText(imWidth - border - annotationOffset - textWidth, drawY, text);
+            }
+            if (pos.x != 0) {
+                QString text = QString::number(std::abs(pos.x));
+                int textWidth = fm.horizontalAdvance(text);
+                int drawX = x - textWidth/2;
+                painter.drawText(drawX, border + fm.ascent(), text);
+                painter.drawText(drawX, imHeight - border - fm.descent(), text);
+            }
+        }
+
+        QFont voHiFont = painter.font();
+        voHiFont.setPixelSize(px_m*.45);
+        painter.setPen(QPen(lineColor));
+        painter.setFont(voHiFont);
+        painter.drawText(
+                QRect(0, 0, imWidth, border),
+                Qt::AlignHCenter | Qt::AlignVCenter,
+                "Vorne"
+                );
+        painter.drawText(
+                QRect(0, imHeight - border, imWidth, border),
+                Qt::AlignHCenter | Qt::AlignVCenter,
+                "Hinten"
+                );
+
+        painter.end();
+        image.save((scene.name + ".jpg").c_str(), "JPG");
+    }
     return EXIT_SUCCESS;
 }
