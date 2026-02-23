@@ -13,7 +13,7 @@
 #include "qnamespace.h"
 #include "qpaintdevice.h"
 #include "qpen.h"
-#include "third_party/json/single_include/nlohmann/json.hpp"
+#include "nlohmann/json.hpp"
 #include <QApplication>
 #include <QImage>
 #include <QPainter>
@@ -311,7 +311,7 @@ int main(int argc, char* argv[]) {
             image.fill(Qt::white);
             floor.draw(image);
 
-            notes << scene.name << "\t\"";
+            notes << "\"" << find_and_replace(scene.name, "\"", "\"\"") << "\"\t\"";
             std::vector<std::unique_ptr<Position>> mlePositions, femPositions;
             for (const Position pos : scene.positions) {
                 //pos.draw(image, floor);
@@ -343,7 +343,8 @@ int main(int argc, char* argv[]) {
             }
 
             std::string imageName = dancer->shortcut + scene.name + ".jpg";
-            std::string escapedImageName = find_and_replace(imageName, "\"", "\"\"");
+            imageName = find_and_replace(imageName, "\"", "");
+            imageName = find_and_replace(imageName, "/", "");
             notes << "<img src=\"\"" << imageName << "\"\"><br>";
 
             std::string text = find_and_replace(scene.text, "\r\n", "<br>");
