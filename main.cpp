@@ -120,13 +120,15 @@ Role::Role(json j) {
     color = j["Color"];
 }
 
-struct Dancer {
+class Dancer {
+   public:
     int id;
     std::shared_ptr<Role> role;
     std::string name,
                 shortcut,
                 color;
     Dancer(json, std::vector<std::shared_ptr<Role>>&);
+    void draw(QImage&, int, int);
 };
 
 Dancer::Dancer(json j, std::vector<std::shared_ptr<Role>>& role_ptrs) {
@@ -143,7 +145,24 @@ Dancer::Dancer(json j, std::vector<std::shared_ptr<Role>>& role_ptrs) {
     }
 }
 
-struct Position {
+void Dancer::draw(QImage& img, int x, int y) {
+    QPainter painter(&img);
+    QFont dancerFont = painter.font();
+    dancerFont.setPixelSize(PX_M*.4);
+    int diameter = PX_M;
+    QColor col(this->color.c_str());
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(QBrush(col));
+    painter.drawEllipse(x - diameter/2., y - diameter/2,diameter,diameter);
+    painter.setPen(QPen(getTextColor(col)));
+    painter.setFont(dancerFont);
+    painter.drawText(QRect(x - diameter/2., y - diameter/2, diameter, diameter),
+            Qt::AlignCenter,
+            this->shortcut.c_str());
+}
+
+class Position {
+   public:
     std::shared_ptr<Dancer> dancer;
     double x,
            y;
@@ -161,30 +180,18 @@ Position::Position(json j, std::vector<std::shared_ptr<Dancer>>& dancers) {
             break;
         }
     }
-
 }
 
 void Position::draw(QImage& img, Floor floor) const {
+    int x = BORDER + (floor.sizeLeft + this->x) * PX_M,
+        y = BORDER + (floor.sizeBack - this->y) * PX_M;
+    this->dancer->draw(img, x, y);
+
     QPainter painter(&img);
-    QFont dancerFont = painter.font();
-    dancerFont.setPixelSize(PX_M*.4);
     QFont annotationFont = painter.font();
     annotationFont.setPixelSize(PX_M*.3);
     QFontMetrics fm(annotationFont);
-    int diameter = PX_M,
-        annotationOffset = PX_M/10;
-
-    QColor col(this->dancer->color.c_str());
-    painter.setPen(Qt::NoPen);
-    painter.setBrush(QBrush(col));
-    int x = BORDER + (floor.sizeLeft + this->x) * PX_M,
-        y = BORDER + (floor.sizeBack - this->y) * PX_M;
-    painter.drawEllipse(x - diameter/2., y - diameter/2,diameter,diameter);
-    painter.setPen(QPen(getTextColor(col)));
-    painter.setFont(dancerFont);
-    painter.drawText(QRect(x - diameter/2., y - diameter/2, diameter, diameter),
-            Qt::AlignCenter,
-            this->dancer->shortcut.c_str());
+    int annotationOffset = PX_M/10;
 
     painter.setPen(QPen(Qt::black));
     painter.setFont(annotationFont);
