@@ -1,3 +1,4 @@
+#include <cstddef>
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
@@ -300,15 +301,21 @@ int main(int argc, char* argv[]) {
     }
 
     QApplication app(argc, argv);
+    std::string image_dir = argv[1];
+    size_t last_dot = image_dir.find_last_of('.');
+    if (last_dot != std::string::npos) {
+        image_dir.erase(last_dot);
+    }
+    image_dir += "_anki";
+    if (!fs::exists(image_dir)) {
+        fs::create_directory(image_dir);
+    }
     for (const auto dancer : dancers) {
         std::string fileName = dancer->name;
         std::replace(fileName.begin(), fileName.end(), ' ', '_');
         fileName.erase(std::remove(fileName.begin(), fileName.end(), '/'), fileName.end());
-        if (!fs::exists(fileName)) {
-            fs::create_directory(fileName);
-        }
 
-        std::ofstream notes{fileName + "/" + fileName + ".txt"};
+        std::ofstream notes{fileName + ".txt"};
         notes << "#separator:tab\n";
         notes << "#html:true\n";
         notes << "#notetype Basic\n";
@@ -349,7 +356,7 @@ int main(int argc, char* argv[]) {
                 }
             }
 
-            std::string imageName = dancer->shortcut + scene.name + ".jpg";
+            std::string imageName = fileName + "_" + scene.name + ".jpg";
             imageName = find_and_replace(imageName, "\"", "");
             imageName = find_and_replace(imageName, "/", "");
             notes << "<img src=\"\"" << imageName << "\"\"><br>";
@@ -358,7 +365,7 @@ int main(int argc, char* argv[]) {
             text = find_and_replace(text, "\"", "\"\"");
             notes << text << "\"\n";
 
-            image.save((fileName + "/" + imageName).c_str(), "JPG");
+            image.save((image_dir + "/" + imageName).c_str(), "JPG");
         }
         notes.close();
     }
