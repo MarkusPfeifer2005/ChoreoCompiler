@@ -1,9 +1,12 @@
+#include <algorithm>
 #include <cstddef>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <iostream>
 #include <fstream>
 #include <memory>
+#include <ostream>
 #include <string>
 #include <vector>
 #include "qbrush.h"
@@ -54,7 +57,9 @@ struct Floor {
                  sizeBack,
                  sizeLeft,
                  sizeRight;
+    Floor() = default;
     Floor(json);
+    void loadJson(json);
     unsigned int getHeight() const {return sizeFront + sizeBack;}
     unsigned int getWidth() const {return sizeLeft + sizeRight;}
     unsigned int getImWidth() const {return PX_M * getWidth() + 2*BORDER;}
@@ -62,10 +67,16 @@ struct Floor {
     void draw(QImage&) const;
 };
 
-Floor::Floor(json j) : sizeFront(j["SizeFront"]),
-                       sizeBack(j["SizeBack"]),
-                       sizeLeft(j["SizeLeft"]),
-                       sizeRight(j["SizeRight"]) {}
+Floor::Floor(json j) {
+    loadJson(j);
+}
+
+void Floor::loadJson(json j) {
+    this->sizeFront = j["SizeFront"];
+    this->sizeBack = j["SizeBack"];
+    this->sizeLeft = j["SizeLeft"];
+    this->sizeRight = j["SizeRight"];
+}
 
 void Floor::draw(QImage& img) const {
     QPainter painter{&img}; 
@@ -218,6 +229,7 @@ struct Scene {
                 text;
     Scene(json, std::vector<std::shared_ptr<Dancer>>&);
     void print();
+    QImage render(Floor, int=0) const;
 };
 
 Scene::Scene(json j, std::vector<std::shared_ptr<Dancer>>& dancers) {
@@ -238,6 +250,24 @@ void Scene::print() {
     std::cout << std::endl;
 }
 
+QImage Scene::render(Floor floor, int roleID) const {
+    QImage image(floor.getImWidth(), floor.getImHeight(), QImage::Format_ARGB32);
+    image.fill(Qt::white);
+    floor.draw(image);
+
+    for (const Position pos : this->positions) {
+        if (pos.dancer->role->id != roleID) {
+            pos.draw(image, floor);
+        }
+    }
+    for (const Position pos : this->positions) {
+        if (pos.dancer->role->id == roleID) {
+            pos.draw(image, floor);
+        }
+    }
+    return image;
+}
+
 struct Settings {
     long animationMilliseconds = 500;
     int frontPosition,
@@ -250,9 +280,11 @@ struct Settings {
          showTimestamps = false;
     std::string floorColor = "#FFF9F4D4";
     Settings(json);
+    Settings() = default;
+    void loadJson(json);
 };
 
-Settings::Settings(json j) {
+void Settings::loadJson(json j) {
     animationMilliseconds = j["AnimationMilliseconds"];
     frontPosition = j["FrontPosition"];
     dancerPosition = j["DancerPosition"];
@@ -265,6 +297,10 @@ Settings::Settings(json j) {
     showTimestamps = j["ShowTimestamps"];
 }
 
+Settings::Settings(json j) {
+    loadJson(j);
+}
+
 std::string find_and_replace(std::string text, std::string from, std::string to) {
     size_t start_pos = 0;
     while ((start_pos = text.find(from, start_pos)) != std::string::npos) {
@@ -274,100 +310,101 @@ std::string find_and_replace(std::string text, std::string from, std::string to)
     return text;
 }
 
-int main(int argc, char* argv[]) {
-    if (argc < 2) {
-        std::cerr << "Please provide file path!" << std::endl;
-        return EXIT_FAILURE;
-    }
 
-    std::ifstream f(argv[1]);
-    json data = json::parse(f);
-    Floor floor{data["Floor"]};
-    Settings setting{data["Settings"]};
-
+class Choreo {
+public:
+    Floor floor;
+    Settings settings;
     std::vector<std::shared_ptr<Role>> roles;
+    std::vector<std::shared_ptr<Dancer>> dancers;
+    std::vector<Scene> scenes;
+    Choreo(std::string);
+};
+
+Choreo::Choreo(std::string filePath) {
+    std::ifstream file(filePath);
+    json data = json::parse(file);
+    floor.loadJson(data["Floor"]);
+    settings.loadJson(data["Settings"]);
     for (const auto r : data["Roles"]) {
         roles.push_back(std::make_shared<Role>(r));
     }
-
-    std::vector<std::shared_ptr<Dancer>> dancers;
     for (const auto d : data["Dancers"]) {
         dancers.push_back(std::make_shared<Dancer>(d, roles));
     }
-
-    std::vector<Scene> scenes;
     for (const auto s : data["Scenes"]) {
         scenes.push_back(Scene{s, dancers});
     }
+}
 
-    QApplication app(argc, argv);
-    std::string image_dir = argv[1];
-    size_t last_dot = image_dir.find_last_of('.');
-    if (last_dot != std::string::npos) {
-        image_dir.erase(last_dot);
-    }
-    image_dir += "_anki";
-    if (!fs::exists(image_dir)) {
-        fs::create_directory(image_dir);
-    }
-    for (const auto dancer : dancers) {
-        std::string fileName = dancer->name;
-        std::replace(fileName.begin(), fileName.end(), ' ', '_');
-        fileName.erase(std::remove(fileName.begin(), fileName.end(), '/'), fileName.end());
-
-        std::ofstream notes{fileName + ".txt"};
-        notes << "#separator:tab\n";
-        notes << "#html:true\n";
-        notes << "#notetype Basic\n";
-
-        for (const Scene scene : scenes) {
-            QImage image(floor.getImWidth(), floor.getImHeight(), QImage::Format_ARGB32);
-            image.fill(Qt::white);
-            floor.draw(image);
-
-            notes << "\"" << find_and_replace(scene.name, "\"", "\"\"") << "\"\t\"";
-            std::vector<std::unique_ptr<Position>> mlePositions, femPositions;
-            for (const Position pos : scene.positions) {
-                //pos.draw(image, floor);
-                if (pos.dancer->role->name == "Herr") {
-                    mlePositions.push_back(std::make_unique<Position>(pos));
-                }
-                else {
-                    femPositions.push_back(std::make_unique<Position>(pos));
-                }
-                if (pos.dancer->id == dancer->id) {
-                    notes << std::abs(pos.x) << "|" << std::abs(pos.y) << "<br>";
-                }
-            }
-            if (dancer->role->name == "Herr") {
-                for (const auto& pos : femPositions) {
-                    pos->draw(image, floor);
-                }
-                for (const auto& pos : mlePositions) {
-                    pos->draw(image, floor);
-                }
-            }
-            else {
-                for (const auto& pos : mlePositions) {
-                    pos->draw(image, floor);
-                }
-                for (const auto& pos : femPositions) {
-                    pos->draw(image, floor);
-                }
-            }
-
-            std::string imageName = fileName + "_" + scene.name + ".jpg";
-            imageName = find_and_replace(imageName, "\"", "");
-            imageName = find_and_replace(imageName, "/", "");
-            notes << "<img src=\"\"" << imageName << "\"\"><br>";
-
-            std::string text = find_and_replace(scene.text, "\r\n", "<br>");
-            text = find_and_replace(text, "\"", "\"\"");
-            notes << text << "\"\n";
-
-            image.save((image_dir + "/" + imageName).c_str(), "JPG");
+void generateAnki(std::string choreoFileName, std::string dancerName) {
+    Choreo choreo{choreoFileName};
+    bool found = false;
+    int dancerID = 0,
+        dancerRoleID = 0;
+    for (const auto dancer : choreo.dancers) {
+        if (dancer->name == dancerName) {
+            found = true;
+            dancerID = dancer->id;
+            dancerRoleID = dancer->role->id;
+            break;
         }
-        notes.close();
+    }
+    if (!found) {
+        std::cerr << "Name does not exit!" << std::endl;
+        exit(EXIT_FAILURE);
+    }
+    std::string dirName = dancerName;
+    std::replace(dirName.begin(), dirName.end(), ' ', '_');
+    dirName.erase(std::remove(dirName.begin(), dirName.end(), '/'), dirName.end());
+    if (!fs::exists(dirName)) {
+        fs::create_directory(dirName);
+    }
+    std::string txtName = dirName;
+
+    std::ofstream notes{dirName + "/" + txtName + ".txt"};
+    notes << "#separator:tab\n";
+    notes << "#html:true\n";
+    notes << "#notetype Basic\n";
+
+    for (const Scene scene : choreo.scenes) {
+        QImage image = scene.render(choreo.floor, dancerRoleID);
+
+        notes << "\"" << find_and_replace(scene.name, "\"", "\"\"") << "\"\t\"";
+        for (const Position pos : scene.positions) {
+            if (pos.dancer->id == dancerID) {
+                notes << std::abs(pos.x) << "|" << std::abs(pos.y) << "<br>";
+            }
+        }
+
+        std::string imageName = dirName + "_" + scene.name + ".jpg";
+        imageName = find_and_replace(imageName, "\"", "");
+        imageName = find_and_replace(imageName, "/", "");
+        notes << "<img src=\"\"" << imageName << "\"\"><br>";
+
+        std::string text = find_and_replace(scene.text, "\r\n", "<br>");
+        text = find_and_replace(text, "\"", "\"\"");
+        notes << text << "\"\n";
+
+        image.save((dirName + "/" + imageName).c_str(), "JPG");
+    }
+    notes.close();
+}
+
+int main(int argc, char* argv[]) {
+    if (argc < 2) {
+        std::cerr << "Please provide a file path!" << std::endl;
+        return EXIT_FAILURE;
+    }
+    QApplication app(argc, argv);
+    if (strcmp(argv[1], "--list") == 0 || strcmp(argv[1], "-l") == 0) {
+        Choreo choreo{argv[2]};
+        for (auto dancer : choreo.dancers) {
+            std::cout << dancer->name << "\n";
+        }
+    }
+    else if (strcmp(argv[1], "--name") == 0 || strcmp(argv[1], "-n") == 0) {
+        generateAnki(argv[3], argv[2]);
     }
 
     return EXIT_SUCCESS;
