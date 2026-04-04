@@ -24,6 +24,19 @@ coco --list MyChoreography.choreo
 ```
 To create Anki cards for a dancer do the following:
 ```
-coco --name "FistName LastName" MyChoreography.choreo
+coco --anki "FistName LastName" MyChoreography.choreo
 ```
-It will generate a directory for the dancer containing renderings of the position and a text file with the Anki-notes. To import them into Anki copy the images to `~/.local/share/Anki/[User]/collection.media` and then import the text file into Anki. You can find a detailed guide [here](https://docs.ankiweb.net/importing/text-files.html).
+It will generate a directory for the dancer containing renderings of the
+position and a text file with the Anki-notes. To import them into Anki copy the
+images to `~/.local/share/Anki/[User]/collection.media` and then import the
+text file into Anki. You can find a detailed guide
+[here](https://docs.ankiweb.net/importing/text-files.html).
+
+To compile a PDF:
+```
+coco MyChoreography.choreo Output.pdf
+```
+If you need the top of the dancefloor to be at the top of the file:
+```
+coco MyChoreography.choreo Output.pdf --topUp
+```
