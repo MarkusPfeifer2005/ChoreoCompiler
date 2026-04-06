@@ -750,6 +750,20 @@ void drawTitlePage(QPainter& painter, Choreo& choreo) {
 }
 
 int main(int argc, char* argv[]) {
+    if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0) {
+        std::cout << "Usage: coco [OPTION] [FILE]...\n";
+        std::cout << "  -h, --help\tdisplay this help\n";
+        std::cout << "  -l, --list\tlist all dancers\n";
+        std::cout << "  -a, --anki\tgenerate anki cards for the provided dancer\n";
+        std::cout << "      --topUp\torient the top of the dance floor to face upwards\n";
+        std::cout << "\nExamples:\n";
+        std::cout << "coco --list MyChoreography.choreo\n";
+        std::cout << "coco --anki 'FistName LastName' MyChoreography.choreo\n";
+        std::cout << "coco MyChoreography.choreo Output.pdf\n";
+        std::cout << "coco MyChoreography.choreo Output.pdf --topUp\n";
+        std::cout << std::endl;
+        return EXIT_SUCCESS;
+    }
     if (argc < 2) {
         std::cerr << "Please provide a file path!" << std::endl;
         return EXIT_FAILURE;
