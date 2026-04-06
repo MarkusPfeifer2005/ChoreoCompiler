@@ -32,7 +32,6 @@
 #include <QPageSize>
 
 #define BORDER 60
-#define PX_M 100.
 #define MARGIN 120
 #define HEADER_HEIGHT 40
 #define FOOTER_HEIGHT 60
@@ -76,7 +75,9 @@ Qt::GlobalColor getTextColor(const QColor &bgColor) {
     return (luminance > 0.5) ? Qt::black : Qt::white;
 }
 
-struct Floor {
+class Floor {
+  public:
+    static float px_m;
     unsigned int sizeFront,
                  sizeBack,
                  sizeLeft,
@@ -86,10 +87,27 @@ struct Floor {
     void loadJson(json);
     unsigned int getHeight() const {return sizeFront + sizeBack;}
     unsigned int getWidth() const {return sizeLeft + sizeRight;}
-    unsigned int getImWidth() const {return PX_M * getWidth() + 2*BORDER;}
-    unsigned int getImHeight() const {return PX_M * getHeight() + 2*BORDER;}
-    void draw(QImage&, bool=true) const;
+    unsigned int getImWidth() const {return px_m * getWidth() + 2*BORDER;}
+    unsigned int getImHeight() const {return px_m * getHeight() + 2*BORDER;}
+    void draw(QPainter&, bool=true) const;
+    void setXYOffset(int, int);
+    QImage getBlankImage();
+    int xOffset=0,
+        yOffset=0;
+    float xPos_to_px(float meter) const {return xOffset + BORDER + meter*px_m;}
+    float yPos_to_px(float meter) const {return yOffset + BORDER + meter*px_m;}
+    float m_to_px(float meter) const {return meter*px_m;}
+    void drawTopLabel(QPainter&, std::string) const;
+    void drawBottomLabel(QPainter&, std::string) const;
 };
+
+float Floor::px_m = 100.;
+
+QImage Floor::getBlankImage() {
+    QImage image(getImWidth(), getImHeight(), QImage::Format_ARGB32);
+    image.fill(Qt::white);
+    return image;
+}
 
 Floor::Floor(json j) {
     loadJson(j);
@@ -102,58 +120,66 @@ void Floor::loadJson(json j) {
     this->sizeRight = j["SizeRight"];
 }
 
-void Floor::draw(QImage& img, bool topUp) const {
-    QPainter painter{&img}; 
+void Floor::setXYOffset(int x, int y) {
+    this->xOffset = x;
+    this->yOffset = y;
+}
+
+void Floor::draw(QPainter& painter, bool topUp) const {
     QColor borderColor(GREEN),
            fillColor(GRAY),
            gridColor("#a9a9a9");
     painter.setPen(Qt::NoPen);
     painter.setBrush(QBrush(fillColor));
-    painter.drawRect(BORDER, BORDER, getImWidth()-2*BORDER, getImHeight()-2*BORDER);
+    painter.drawRect(xPos_to_px(0) , yPos_to_px(0), m_to_px(getWidth()), m_to_px(getHeight()));
     painter.setPen(QPen(gridColor, 2));
-    for (int x = BORDER + PX_M; x < getWidth()*PX_M; x += PX_M) {
-        if (x == getImWidth()/2) {continue;}
-        painter.drawLine(x, BORDER, x, getImHeight()-BORDER);
+    for (int x = xPos_to_px(1); x < xPos_to_px(getWidth()); x += m_to_px(1)) {
+        if (x == xPos_to_px(getWidth()/2.))
+            continue;
+        painter.drawLine(x, yPos_to_px(0), x, yPos_to_px(getHeight()));
     }
-    for (int y = BORDER + PX_M; y < getHeight()*PX_M; y += PX_M) {
-        if (y == getImHeight()/2) {continue;}
-        painter.drawLine(BORDER, y, getImWidth() - BORDER, y);
+    for (int y = yPos_to_px(1); y < yPos_to_px(getHeight()); y += m_to_px(1)) {
+        if (y == yPos_to_px(getHeight()/2.))
+            continue;
+        painter.drawLine(xPos_to_px(0), y, xPos_to_px(getWidth()), y);
     }
     painter.setPen(QPen(borderColor, 5));
     painter.setBrush(Qt::NoBrush);
-    painter.drawRect(BORDER, BORDER, getImWidth()-2*BORDER, getImHeight()-2*BORDER);
-    painter.drawLine(BORDER, getImHeight()/2, getImWidth() - BORDER, getImHeight()/2);  // horizontal
-    painter.drawLine(getImWidth()/2, BORDER, getImWidth()/2, getImHeight()-BORDER);  // vertical
+    painter.drawRect(xPos_to_px(0), yPos_to_px(0), m_to_px(getWidth()), m_to_px(getHeight()));
+    painter.drawLine(xPos_to_px(0), yPos_to_px(getHeight()/2.), xPos_to_px(getWidth()), yPos_to_px(getHeight()/2.));
+    painter.drawLine(xPos_to_px(getWidth()/2.), yPos_to_px(0), xPos_to_px(getWidth()/2.), yPos_to_px(getHeight()));
 
     QFont voHiFont = painter.font();
-    voHiFont.setPixelSize(PX_M*.45);
+    voHiFont.setPixelSize(px_m*.45);
     painter.setPen(QPen(gridColor));
     painter.setFont(voHiFont);
     if (topUp) {
-    painter.drawText(
-            QRect(0, 0, getImWidth(), BORDER),
-            Qt::AlignHCenter | Qt::AlignVCenter,
-            "Vorne"
-            );
-    painter.drawText(
-            QRect(0, getImHeight() - BORDER, getImWidth(), BORDER),
-            Qt::AlignHCenter | Qt::AlignVCenter,
-            "Hinten"
-            );
+        drawTopLabel(painter, "Vorne");
+        drawBottomLabel(painter, "Hinten");
     }
     else {
-    painter.drawText(
-            QRect(0, 0, getImWidth(), BORDER),
-            Qt::AlignHCenter | Qt::AlignVCenter,
-            "Hinten"
-            );
-    painter.drawText(
-            QRect(0, getImHeight() - BORDER, getImWidth(), BORDER),
-            Qt::AlignHCenter | Qt::AlignVCenter,
-            "Vorne"
-            );
+        drawTopLabel(painter, "Hinten");
+        drawBottomLabel(painter, "Vorne");
     }
 }
+
+void Floor::drawTopLabel(QPainter& painter, std::string label) const {
+    painter.drawText(
+            QRect(xPos_to_px(0), yOffset, m_to_px(getWidth()), BORDER),
+            Qt::AlignHCenter | Qt::AlignVCenter,
+            label.c_str()
+            );
+}
+
+void Floor::drawBottomLabel(QPainter& painter, std::string label) const {
+    painter.drawText(
+            QRect(xPos_to_px(0), yPos_to_px(getHeight()), m_to_px(getWidth()), BORDER),
+            Qt::AlignHCenter | Qt::AlignVCenter,
+            label.c_str()
+            );
+
+}
+
 
 struct Role {
     int id,
@@ -171,8 +197,9 @@ Role::Role(json j) {
 }
 
 class Dancer {
-   public:
+  public:
     int id;
+    static int diameter;
     std::shared_ptr<Role> role;
     std::string name,
                 shortcut,
@@ -195,10 +222,11 @@ Dancer::Dancer(json j, std::vector<std::shared_ptr<Role>>& role_ptrs) {
     }
 }
 
+int Dancer::diameter = 100;
+
 void Dancer::draw(QPainter& painter, int x, int y) {
     QFont dancerFont = painter.font();
-    dancerFont.setPixelSize(PX_M*.4);
-    int diameter = PX_M;
+    dancerFont.setPixelSize(diameter*.4);
     QColor col(this->color.c_str());
     painter.setPen(Qt::NoPen);
     painter.setBrush(QBrush(col));
@@ -216,7 +244,7 @@ class Position {
     double x,
            y;
     Position(json, std::vector<std::shared_ptr<Dancer>>&);
-    void draw(QImage&, Floor, bool=true) const ;
+    void draw(QPainter&, Floor, bool=true) const ;
 };
 
 Position::Position(json j, std::vector<std::shared_ptr<Dancer>>& dancers) {
@@ -231,25 +259,22 @@ Position::Position(json j, std::vector<std::shared_ptr<Dancer>>& dancers) {
     }
 }
 
-void Position::draw(QImage& img, Floor floor, bool topUp) const {
+void Position::draw(QPainter& painter, Floor floor, bool topUp) const {
     int x, y;
     if (topUp) {
-        y = BORDER + (floor.sizeBack - this->y) * PX_M;
-        x = BORDER + (floor.sizeLeft + this->x) * PX_M;
+        y = floor.yPos_to_px(floor.sizeBack - this->y);
+        x = floor.xPos_to_px(floor.sizeLeft + this->x);
     }
     else {
-        y = BORDER + (floor.sizeBack + this->y) * PX_M;
-        x = BORDER + (floor.sizeLeft - this->x) * PX_M;
+        y = floor.yPos_to_px(floor.sizeBack + this->y);
+        x = floor.xPos_to_px(floor.sizeLeft - this->x);
     }
-        
-    QPainter painter(&img);
-
     this->dancer->draw(painter, x, y);
 
     QFont annotationFont = painter.font();
-    annotationFont.setPixelSize(PX_M*.3);
+    annotationFont.setPixelSize(floor.px_m*.3);
     QFontMetrics fm(annotationFont);
-    int annotationOffset = PX_M/10;
+    int annotationOffset = floor.px_m/10;
 
     painter.setPen(QPen(Qt::black));
     painter.setFont(annotationFont);
@@ -257,15 +282,15 @@ void Position::draw(QImage& img, Floor floor, bool topUp) const {
         QString text = QString::number(std::abs(this->y));
         int textWidth = fm.horizontalAdvance(text);
         int drawY = y - fm.height()/2 + fm.ascent();
-        painter.drawText(BORDER + annotationOffset, drawY, text);
-        painter.drawText(floor.getImWidth() - BORDER - annotationOffset - textWidth, drawY, text);
+        painter.drawText(floor.xPos_to_px(0) + annotationOffset, drawY, text);
+        painter.drawText(floor.xPos_to_px(floor.getWidth()) - annotationOffset - textWidth, drawY, text);
     }
     if (this->x != 0) {
         QString text = QString::number(std::abs(this->x));
         int textWidth = fm.horizontalAdvance(text);
         int drawX = x - textWidth/2;
-        painter.drawText(drawX, BORDER + fm.ascent(), text);
-        painter.drawText(drawX, floor.getImHeight() - BORDER - fm.descent(), text);
+        painter.drawText(drawX, floor.yPos_to_px(0) + fm.ascent(), text);
+        painter.drawText(drawX, floor.yPos_to_px(floor.getHeight()) - fm.descent(), text);
     }
 }
 
@@ -275,7 +300,7 @@ struct Scene {
                 text;
     Scene(json, std::vector<std::shared_ptr<Dancer>>&);
     void print();
-    QImage render(Floor, int=0, bool=true) const;
+    void draw(QPainter&, Floor&, int=0, bool=true) const;
 };
 
 Scene::Scene(json j, std::vector<std::shared_ptr<Dancer>>& dancers) {
@@ -296,22 +321,18 @@ void Scene::print() {
     std::cout << std::endl;
 }
 
-QImage Scene::render(Floor floor, int roleID, bool topUp) const {
-    QImage image(floor.getImWidth(), floor.getImHeight(), QImage::Format_ARGB32);
-    image.fill(Qt::white);
-    floor.draw(image, topUp);
-
+void Scene::draw(QPainter& painter, Floor& floor, int roleID, bool topUp) const {
+    floor.draw(painter, topUp);
     for (const Position pos : this->positions) {
         if (pos.dancer->role->id != roleID) {
-            pos.draw(image, floor, topUp);
+            pos.draw(painter, floor, topUp);
         }
     }
     for (const Position pos : this->positions) {
         if (pos.dancer->role->id == roleID) {
-            pos.draw(image, floor, topUp);
+            pos.draw(painter, floor, topUp);
         }
     }
-    return image;
 }
 
 struct Settings {
@@ -426,7 +447,10 @@ void generateAnki(std::string choreoFileName, std::string dancerName) {
     notes << "#notetype Basic\n";
 
     for (const Scene scene : choreo.scenes) {
-        QImage image = scene.render(choreo.floor, dancerRoleID);
+        QImage image(choreo.floor.getImWidth(), choreo.floor.getImHeight(), QImage::Format_ARGB32);
+        image.fill(Qt::white);
+        QPainter painter(&image);
+        scene.draw(painter, choreo.floor, dancerRoleID);
 
         notes << "\"" << find_and_replace(scene.name, "\"", "\"\"") << "\"\t\"";
         for (const Position pos : scene.positions) {
@@ -726,8 +750,6 @@ void drawTitlePage(QPainter& painter, Choreo& choreo) {
 }
 
 int main(int argc, char* argv[]) {
-    
-
     if (argc < 2) {
         std::cerr << "Please provide a file path!" << std::endl;
         return EXIT_FAILURE;
@@ -739,7 +761,7 @@ int main(int argc, char* argv[]) {
             std::cout << dancer->name << "\n";
         }
     }
-    else if (strcmp(argv[1], "--name") == 0 || strcmp(argv[1], "-n") == 0) {
+    else if (strcmp(argv[1], "--anki") == 0 || strcmp(argv[1], "-a") == 0) {
         generateAnki(argv[3], argv[2]);
     }
     else {
@@ -759,6 +781,8 @@ int main(int argc, char* argv[]) {
             }
         }
         Choreo choreo(choreoFileName);
+        choreo.floor.px_m = 108;
+        Dancer::diameter = choreo.floor.px_m;
 
         int dpi = 300;
         QPdfWriter writer(pdfName.c_str());
@@ -778,9 +802,9 @@ int main(int argc, char* argv[]) {
             drawFooterHeader(painter, currPage, totalPages, choreo.name);
             drawTitle(painter, scene.name, currPage, totalPages);
             drawTextBox(painter, QString::fromStdString(scene.text));
-            painter.drawImage(MARGIN-BORDER, 200, scene.render(choreo.floor, 2, topUp));
+            choreo.floor.setXYOffset(MARGIN-BORDER, 300);
+            scene.draw(painter, choreo.floor, 2, topUp);
             drawSidePanel(painter, scene, choreo.roles);
-
             currPage++;
         }
         painter.end();
