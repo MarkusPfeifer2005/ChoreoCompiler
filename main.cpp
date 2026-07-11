@@ -1,5 +1,5 @@
 #include <algorithm>
-#include <cstddef>
+//#include <cstddef>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -8,9 +8,11 @@
 #include <memory>
 #include <ostream>
 #include <qcontainerfwd.h>
+#include <qobjectdefs.h>
 #include <qpagesize.h>
 #include <qpainter.h>
 #include <qpdfwriter.h>
+#include <qwidget.h>
 #include <string>
 #include <vector>
 #include "qbrush.h"
@@ -21,8 +23,8 @@
 #include "qnamespace.h"
 #include "qpaintdevice.h"
 #include "qpen.h"
-#include "nlohmann/json.hpp"
 #include <QApplication>
+#include <QWidget>
 #include <QImage>
 #include <QPainter>
 #include <QColor>
@@ -30,391 +32,15 @@
 #include <QColor>
 #include <QPdfWriter>
 #include <QPageSize>
+#include <QPushButton>
+#include <QVBoxLayout>
+#include "dance.h"
+#include "utils.h"
+#include "config.h"
 
-#define BORDER 60
-#define MARGIN 120
-#define HEADER_HEIGHT 40
-#define FOOTER_HEIGHT 60
 
-#define GREEN "#3d7e2d"
-#define GRAY "#f0f0f0"
-
-using json = nlohmann::json;
 namespace fs = std::filesystem;
 
-
-std::string toGermanDate(const std::string& isoDate) {
-    // Extract YYYY-MM-DD
-    std::string year = isoDate.substr(0, 4);
-    std::string month = isoDate.substr(5, 2);
-    std::string day = isoDate.substr(8, 2);
-
-    // Combine in German format: DD.MM.YYYY
-    return day + "." + month + "." + year;
-}
-
-
-// Function to calculate the relative luminance of a color
-double calculateLuminance(const QColor &color) {
-    double r = color.redF();
-    double g = color.greenF();
-    double b = color.blueF();
-
-    // Apply gamma correction
-    r = (r <= 0.03928) ? r / 12.92 : std::pow((r + 0.055) / 1.055, 2.4);
-    g = (g <= 0.03928) ? g / 12.92 : std::pow((g + 0.055) / 1.055, 2.4);
-    b = (b <= 0.03928) ? b / 12.92 : std::pow((b + 0.055) / 1.055, 2.4);
-
-    // Calculate relative luminance
-    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-}
-
-// Function to determine text color based on background color
-Qt::GlobalColor getTextColor(const QColor &bgColor) {
-    double luminance = calculateLuminance(bgColor);
-    return (luminance > 0.5) ? Qt::black : Qt::white;
-}
-
-class Floor {
-  public:
-    static float px_m;
-    unsigned int sizeFront,
-                 sizeBack,
-                 sizeLeft,
-                 sizeRight;
-    Floor() = default;
-    Floor(json);
-    void loadJson(json);
-    unsigned int getHeight() const {return sizeFront + sizeBack;}
-    unsigned int getWidth() const {return sizeLeft + sizeRight;}
-    unsigned int getImWidth() const {return px_m * getWidth() + 2*BORDER;}
-    unsigned int getImHeight() const {return px_m * getHeight() + 2*BORDER;}
-    void draw(QPainter&, bool=true) const;
-    void setXYOffset(int, int);
-    QImage getBlankImage();
-    int xOffset=0,
-        yOffset=0;
-    float xPos_to_px(float meter) const {return xOffset + BORDER + meter*px_m;}
-    float yPos_to_px(float meter) const {return yOffset + BORDER + meter*px_m;}
-    float m_to_px(float meter) const {return meter*px_m;}
-    void drawTopLabel(QPainter&, std::string) const;
-    void drawBottomLabel(QPainter&, std::string) const;
-};
-
-float Floor::px_m = 100.;
-
-QImage Floor::getBlankImage() {
-    QImage image(getImWidth(), getImHeight(), QImage::Format_ARGB32);
-    image.fill(Qt::white);
-    return image;
-}
-
-Floor::Floor(json j) {
-    loadJson(j);
-}
-
-void Floor::loadJson(json j) {
-    this->sizeFront = j["SizeFront"];
-    this->sizeBack = j["SizeBack"];
-    this->sizeLeft = j["SizeLeft"];
-    this->sizeRight = j["SizeRight"];
-}
-
-void Floor::setXYOffset(int x, int y) {
-    this->xOffset = x;
-    this->yOffset = y;
-}
-
-void Floor::draw(QPainter& painter, bool topUp) const {
-    QColor borderColor(GREEN),
-           fillColor(GRAY),
-           gridColor("#a9a9a9");
-    painter.setPen(Qt::NoPen);
-    painter.setBrush(QBrush(fillColor));
-    painter.drawRect(xPos_to_px(0) , yPos_to_px(0), m_to_px(getWidth()), m_to_px(getHeight()));
-    painter.setPen(QPen(gridColor, 2));
-    for (int x = xPos_to_px(1); x < xPos_to_px(getWidth()); x += m_to_px(1)) {
-        if (x == xPos_to_px(getWidth()/2.))
-            continue;
-        painter.drawLine(x, yPos_to_px(0), x, yPos_to_px(getHeight()));
-    }
-    for (int y = yPos_to_px(1); y < yPos_to_px(getHeight()); y += m_to_px(1)) {
-        if (y == yPos_to_px(getHeight()/2.))
-            continue;
-        painter.drawLine(xPos_to_px(0), y, xPos_to_px(getWidth()), y);
-    }
-    painter.setPen(QPen(borderColor, 5));
-    painter.setBrush(Qt::NoBrush);
-    painter.drawRect(xPos_to_px(0), yPos_to_px(0), m_to_px(getWidth()), m_to_px(getHeight()));
-    painter.drawLine(xPos_to_px(0), yPos_to_px(getHeight()/2.), xPos_to_px(getWidth()), yPos_to_px(getHeight()/2.));
-    painter.drawLine(xPos_to_px(getWidth()/2.), yPos_to_px(0), xPos_to_px(getWidth()/2.), yPos_to_px(getHeight()));
-
-    QFont voHiFont = painter.font();
-    voHiFont.setPixelSize(px_m*.45);
-    painter.setPen(QPen(gridColor));
-    painter.setFont(voHiFont);
-    if (topUp) {
-        drawTopLabel(painter, "Vorne");
-        drawBottomLabel(painter, "Hinten");
-    }
-    else {
-        drawTopLabel(painter, "Hinten");
-        drawBottomLabel(painter, "Vorne");
-    }
-}
-
-void Floor::drawTopLabel(QPainter& painter, std::string label) const {
-    painter.drawText(
-            QRect(xPos_to_px(0), yOffset, m_to_px(getWidth()), BORDER),
-            Qt::AlignHCenter | Qt::AlignVCenter,
-            label.c_str()
-            );
-}
-
-void Floor::drawBottomLabel(QPainter& painter, std::string label) const {
-    painter.drawText(
-            QRect(xPos_to_px(0), yPos_to_px(getHeight()), m_to_px(getWidth()), BORDER),
-            Qt::AlignHCenter | Qt::AlignVCenter,
-            label.c_str()
-            );
-
-}
-
-
-struct Role {
-    int id,
-        zIndex;
-    std::string name,
-                color;
-   Role(json);
-};
-
-Role::Role(json j) {
-    id = std::stoi(j["$id"].get<std::string>());
-    zIndex = j["ZIndex"];
-    name = j["Name"];
-    color = j["Color"];
-}
-
-class Dancer {
-  public:
-    int id;
-    static int diameter;
-    std::shared_ptr<Role> role;
-    std::string name,
-                shortcut,
-                color;
-    Dancer(json, std::vector<std::shared_ptr<Role>>&);
-    void draw(QPainter&, int, int);
-};
-
-Dancer::Dancer(json j, std::vector<std::shared_ptr<Role>>& role_ptrs) {
-    id = std::stoi(j["$id"].get<std::string>());
-    name = j["Name"];
-    shortcut = j["Shortcut"];
-    color = j["Color"];
-    int ref = std::stoi(j["Role"]["$ref"].get<std::string>());
-    for (const auto& rptr : role_ptrs) {
-        if (rptr->id == ref) {
-            this->role = rptr;
-            break;
-        }
-    }
-}
-
-int Dancer::diameter = 100;
-
-void Dancer::draw(QPainter& painter, int x, int y) {
-    QFont dancerFont = painter.font();
-    dancerFont.setPixelSize(diameter*.4);
-    QColor col(this->color.c_str());
-    painter.setPen(Qt::NoPen);
-    painter.setBrush(QBrush(col));
-    painter.drawEllipse(x - diameter/2., y - diameter/2,diameter,diameter);
-    painter.setPen(QPen(getTextColor(col)));
-    painter.setFont(dancerFont);
-    painter.drawText(QRect(x - diameter/2., y - diameter/2, diameter, diameter),
-            Qt::AlignCenter,
-            this->shortcut.c_str());
-}
-
-class Position {
-   public:
-    std::shared_ptr<Dancer> dancer;
-    double x,
-           y;
-    Position(json, std::vector<std::shared_ptr<Dancer>>&);
-    void draw(QPainter&, Floor, bool=true) const ;
-};
-
-Position::Position(json j, std::vector<std::shared_ptr<Dancer>>& dancers) {
-    x = j["X"];
-    y = j["Y"];
-    int ref = std::stoi(j["Dancer"]["$ref"].get<std::string>());
-    for (const auto d: dancers) {
-        if (d->id == ref) {
-            this->dancer = d;
-            break;
-        }
-    }
-}
-
-void Position::draw(QPainter& painter, Floor floor, bool topUp) const {
-    int x, y;
-    if (topUp) {
-        y = floor.yPos_to_px(floor.sizeBack - this->y);
-        x = floor.xPos_to_px(floor.sizeLeft + this->x);
-    }
-    else {
-        y = floor.yPos_to_px(floor.sizeBack + this->y);
-        x = floor.xPos_to_px(floor.sizeLeft - this->x);
-    }
-    this->dancer->draw(painter, x, y);
-
-    QFont annotationFont = painter.font();
-    annotationFont.setPixelSize(floor.px_m*.3);
-    QFontMetrics fm(annotationFont);
-    int annotationOffset = floor.px_m/10;
-
-    painter.setPen(QPen(Qt::black));
-    painter.setFont(annotationFont);
-    if (this->y != 0) {
-        QString text = QString::number(std::abs(this->y));
-        int textWidth = fm.horizontalAdvance(text);
-        int drawY = y - fm.height()/2 + fm.ascent();
-        painter.drawText(floor.xPos_to_px(0) + annotationOffset, drawY, text);
-        painter.drawText(floor.xPos_to_px(floor.getWidth()) - annotationOffset - textWidth, drawY, text);
-    }
-    if (this->x != 0) {
-        QString text = QString::number(std::abs(this->x));
-        int textWidth = fm.horizontalAdvance(text);
-        int drawX = x - textWidth/2;
-        painter.drawText(drawX, floor.yPos_to_px(0) + fm.ascent(), text);
-        painter.drawText(drawX, floor.yPos_to_px(floor.getHeight()) - fm.descent(), text);
-    }
-}
-
-struct Scene {
-    std::vector<Position> positions;
-    std::string name,
-                text;
-    Scene(json, std::vector<std::shared_ptr<Dancer>>&);
-    void print();
-    void draw(QPainter&, Floor&, int=0, bool=true) const;
-};
-
-Scene::Scene(json j, std::vector<std::shared_ptr<Dancer>>& dancers) {
-    name = j["Name"];
-    text = j["Text"];
-
-    for (const auto position : j["Positions"]) {
-        positions.push_back(Position{position, dancers});
-    }
-}
-
-void Scene::print() {
-    std::cout << this->name << '\n';
-    std::cout << this->text << '\n';
-    for (auto position : this->positions) {
-        std::cout << position.dancer->name << ": " << position.x << "|" << position.y << '\n';
-    }
-    std::cout << std::endl;
-}
-
-void Scene::draw(QPainter& painter, Floor& floor, int roleID, bool topUp) const {
-    floor.draw(painter, topUp);
-    for (const Position pos : this->positions) {
-        if (pos.dancer->role->id != roleID) {
-            pos.draw(painter, floor, topUp);
-        }
-    }
-    for (const Position pos : this->positions) {
-        if (pos.dancer->role->id == roleID) {
-            pos.draw(painter, floor, topUp);
-        }
-    }
-}
-
-struct Settings {
-    long animationMilliseconds = 500;
-    int frontPosition,
-        dancerPosition,
-        resolution;
-    float transparency,
-          dancerSize = .8f;
-    bool positionsAtSide = true,
-         gridLines = true,
-         showTimestamps = false;
-    std::string floorColor = "#FFF9F4D4";
-    Settings(json);
-    Settings() = default;
-    void loadJson(json);
-};
-
-void Settings::loadJson(json j) {
-    animationMilliseconds = j["AnimationMilliseconds"];
-    frontPosition = j["FrontPosition"];
-    dancerPosition = j["DancerPosition"];
-    resolution = j["Resolution"];
-    transparency = j["Transparency"];
-    positionsAtSide = j["PositionsAtSide"];
-    gridLines = j["GridLines"];
-    floorColor = j["FloorColor"];
-    dancerSize = j["DancerSize"];
-    showTimestamps = j["ShowTimestamps"];
-}
-
-Settings::Settings(json j) {
-    loadJson(j);
-}
-
-std::string find_and_replace(std::string text, std::string from, std::string to) {
-    size_t start_pos = 0;
-    while ((start_pos = text.find(from, start_pos)) != std::string::npos) {
-        text.replace(start_pos, from.length(), to);
-        start_pos += to.length(); // In case 'to' contains 'from', like replacing 'x' with 'y'
-    }
-    return text;
-}
-
-
-class Choreo {
-public:
-    Floor floor;
-    Settings settings;
-    std::string name;
-    std::string subtitle,
-                variation,
-                author,
-                description,
-                lastSaveDate;
-    std::vector<std::shared_ptr<Role>> roles;
-    std::vector<std::shared_ptr<Dancer>> dancers;
-    std::vector<Scene> scenes;
-    Choreo(std::string);
-};
-
-Choreo::Choreo(std::string filePath) {
-    std::ifstream file(filePath);
-    json data = json::parse(file);
-    name = data["Name"];
-    subtitle = data["Subtitle"];
-    variation = data["Variation"];
-    author = data["Author"];
-    description = data["Description"];
-    lastSaveDate = data["LastSaveDate"];
-    floor.loadJson(data["Floor"]);
-    settings.loadJson(data["Settings"]);
-    for (const auto r : data["Roles"]) {
-        roles.push_back(std::make_shared<Role>(r));
-    }
-    for (const auto d : data["Dancers"]) {
-        dancers.push_back(std::make_shared<Dancer>(d, roles));
-    }
-    for (const auto s : data["Scenes"]) {
-        scenes.push_back(Scene{s, dancers});
-    }
-}
 
 void generateAnki(std::string choreoFileName, std::string dancerName) {
     Choreo choreo{choreoFileName};
@@ -749,6 +375,36 @@ void drawTitlePage(QPainter& painter, Choreo& choreo) {
     );
 }
 
+void generatePDF(std::string choreoFileName, std::string pdfName, bool topUp, int dpi=300) {
+    Choreo choreo(choreoFileName);
+    choreo.floor.px_m = 108;
+    Dancer::diameter = choreo.floor.px_m;
+
+    QPdfWriter writer(pdfName.c_str());
+    writer.setPageSize(QPageSize::A4);
+    writer.setResolution(dpi);
+    writer.setPageMargins(QMarginsF(0, 0, 0, 0)); // No margins
+    QPainter painter(&writer);
+
+    drawTitlePage(painter, choreo);
+    writer.newPage();
+    drawTeamList(painter, choreo.dancers, choreo.roles);
+
+    int currPage = 1,
+        totalPages = choreo.scenes.size();
+    for (Scene scene : choreo.scenes) {
+        writer.newPage();
+        drawFooterHeader(painter, currPage, totalPages, choreo.name);
+        drawTitle(painter, scene.name, currPage, totalPages);
+        drawTextBox(painter, QString::fromStdString(scene.text));
+        choreo.floor.setXYOffset(MARGIN-BORDER, 300);
+        scene.draw(painter, choreo.floor, 2, topUp);
+        drawSidePanel(painter, scene, choreo.roles);
+        currPage++;
+    }
+    painter.end();
+}
+
 int main(int argc, char* argv[]) {
     if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0) {
         std::cout << "Usage: coco [OPTION] [FILE]...\n";
@@ -778,7 +434,7 @@ int main(int argc, char* argv[]) {
     else if (strcmp(argv[1], "--anki") == 0 || strcmp(argv[1], "-a") == 0) {
         generateAnki(argv[3], argv[2]);
     }
-    else {
+    else if (strcmp(argv[1], "--pdf") == 0 || strcmp(argv[1], "-p") == 0) {
         bool topUp = false;
         std::string pdfName = "out.pdf";
         std::string choreoFileName = "";
@@ -794,36 +450,8 @@ int main(int argc, char* argv[]) {
                 choreoFileName = arg;
             }
         }
-        Choreo choreo(choreoFileName);
-        choreo.floor.px_m = 108;
-        Dancer::diameter = choreo.floor.px_m;
-
-        int dpi = 300;
-        QPdfWriter writer(pdfName.c_str());
-        writer.setPageSize(QPageSize::A4);
-        writer.setResolution(dpi);
-        writer.setPageMargins(QMarginsF(0, 0, 0, 0)); // No margins
-        QPainter painter(&writer);
-
-        drawTitlePage(painter, choreo);
-        writer.newPage();
-        drawTeamList(painter, choreo.dancers, choreo.roles);
-
-        int currPage = 1,
-            totalPages = choreo.scenes.size();
-        for (Scene scene : choreo.scenes) {
-            writer.newPage();
-            drawFooterHeader(painter, currPage, totalPages, choreo.name);
-            drawTitle(painter, scene.name, currPage, totalPages);
-            drawTextBox(painter, QString::fromStdString(scene.text));
-            choreo.floor.setXYOffset(MARGIN-BORDER, 300);
-            scene.draw(painter, choreo.floor, 2, topUp);
-            drawSidePanel(painter, scene, choreo.roles);
-            currPage++;
-        }
-        painter.end();
+        generatePDF(choreoFileName, pdfName, topUp);
     }
-
     return EXIT_SUCCESS;
 }
 

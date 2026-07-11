@@ -15,7 +15,7 @@ FetchContent_MakeAvailable(json)
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets Pdf)
 
-add_executable(coco main.cpp)
+add_executable(coco main.cpp dance.cpp utils.cpp)
 
 target_link_libraries(coco PRIVATE Qt6::Widgets Qt6::Pdf nlohmann_json::nlohmann_json)
 
