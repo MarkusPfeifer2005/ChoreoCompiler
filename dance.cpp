@@ -1,10 +1,13 @@
 #include "dance.h"
+#include "nlohmann/detail/meta/cpp_future.hpp"
 #include "utils.h"
 #include "config.h"
 #include <iostream>
 #include "nlohmann/json.hpp"
 #include <QPainter>
 #include <fstream>
+#include <ostream>
+#include <string>
 
 
 using json = nlohmann::json;
@@ -18,14 +21,7 @@ QImage Floor::getBlankImage() {
 }
 
 Floor::Floor(json j) {
-    loadJson(j);
-}
-
-void Floor::loadJson(json j) {
-    this->sizeFront = j["SizeFront"];
-    this->sizeBack = j["SizeBack"];
-    this->sizeLeft = j["SizeLeft"];
-    this->sizeRight = j["SizeRight"];
+    j.get_to(*this);
 }
 
 void Floor::setXYOffset(int x, int y) {
@@ -96,6 +92,20 @@ Role::Role(json j) {
     color = j["Color"];
 }
 
+void to_json(json& j, const Role& role) {
+    j = {
+        {"$id", std::to_string(role.id)},
+        {"ZIndex", role.zIndex},
+        {"Name", role.name},
+        {"Color", role.color}
+    };
+}
+
+std::ostream& operator<<(std::ostream& os, const Role& role) {
+    json j = {};
+    return os;
+}
+
 Dancer::Dancer(json j, std::vector<std::shared_ptr<Role>>& role_ptrs) {
     id = std::stoi(j["$id"].get<std::string>());
     name = j["Name"];
@@ -126,6 +136,16 @@ void Dancer::draw(QPainter& painter, int x, int y) {
             this->shortcut.c_str());
 }
 
+void to_json(json& j, const Dancer& dancer) {
+    j = {
+        {"$id", std::to_string(dancer.id)},
+        {"Role", {{"$ref", std::to_string(dancer.role->id)}}},
+        {"Name", dancer.name},
+        {"Shortcut", dancer.shortcut},
+        {"Color", dancer.color}
+    };
+}
+
 
 Position::Position(json j, std::vector<std::shared_ptr<Dancer>>& dancers) {
     x = j["X"];
@@ -142,12 +162,12 @@ Position::Position(json j, std::vector<std::shared_ptr<Dancer>>& dancers) {
 void Position::draw(QPainter& painter, Floor floor, bool topUp) const {
     int x, y;
     if (topUp) {
-        y = floor.yPos_to_px(floor.sizeBack - this->y);
-        x = floor.xPos_to_px(floor.sizeLeft + this->x);
+        y = floor.yPos_to_px(floor.SizeBack - this->y);
+        x = floor.xPos_to_px(floor.SizeLeft + this->x);
     }
     else {
-        y = floor.yPos_to_px(floor.sizeBack + this->y);
-        x = floor.xPos_to_px(floor.sizeLeft - this->x);
+        y = floor.yPos_to_px(floor.SizeBack + this->y);
+        x = floor.xPos_to_px(floor.SizeLeft - this->x);
     }
     this->dancer->draw(painter, x, y);
 
@@ -172,6 +192,14 @@ void Position::draw(QPainter& painter, Floor floor, bool topUp) const {
         painter.drawText(drawX, floor.yPos_to_px(0) + fm.ascent(), text);
         painter.drawText(drawX, floor.yPos_to_px(floor.getHeight()) - fm.descent(), text);
     }
+}
+
+void to_json(json& j, const Position& pos) {
+    j = {
+        {"Dancer", {{"$ref", std::to_string(pos.dancer->id)}}},
+        {"X", pos.x},
+        {"Y", pos.y}
+    };
 }
 
 Scene::Scene(json j, std::vector<std::shared_ptr<Dancer>>& dancers) {
@@ -206,22 +234,20 @@ void Scene::draw(QPainter& painter, Floor& floor, int roleID, bool topUp) const 
     }
 }
 
-void Settings::loadJson(json j) {
-    animationMilliseconds = j["AnimationMilliseconds"];
-    frontPosition = j["FrontPosition"];
-    dancerPosition = j["DancerPosition"];
-    resolution = j["Resolution"];
-    transparency = j["Transparency"];
-    positionsAtSide = j["PositionsAtSide"];
-    gridLines = j["GridLines"];
-    floorColor = j["FloorColor"];
-    dancerSize = j["DancerSize"];
-    showTimestamps = j["ShowTimestamps"];
+void to_json(json& j, const Scene& scene) {
+    j = {
+        {"Name", scene.name},
+        {"Text", scene.text},
+        {"FixedPositions", true},
+        {"Positions", scene.positions}
+    };
 }
 
+
 Settings::Settings(json j) {
-    loadJson(j);
+    j.get_to(*this);
 }
+
 
 Choreo::Choreo(std::string filePath) {
     std::ifstream file(filePath);
@@ -232,8 +258,8 @@ Choreo::Choreo(std::string filePath) {
     author = data["Author"];
     description = data["Description"];
     lastSaveDate = data["LastSaveDate"];
-    floor.loadJson(data["Floor"]);
-    settings.loadJson(data["Settings"]);
+    floor = Floor{data["Floor"]};
+    settings = Settings{data["Settings"]};
     for (const auto r : data["Roles"]) {
         roles.push_back(std::make_shared<Role>(r));
     }
@@ -243,5 +269,18 @@ Choreo::Choreo(std::string filePath) {
     for (const auto s : data["Scenes"]) {
         scenes.push_back(Scene{s, dancers});
     }
+}
+
+std::ostream& operator<<(std::ostream& os, const Choreo& choreo) {
+    json j = {
+        {"_Comment", "This file was created with ChoreoCompiler."},
+        {"Settings", choreo.settings},
+        {"Floor", choreo.floor},
+        {"Roles", choreo.roles},
+        {"Dancers", choreo.dancers},
+        {"Scenes", choreo.scenes}
+    };
+    os << j;
+    return os;
 }
 

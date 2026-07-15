@@ -4,6 +4,7 @@ project(main LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+set(CMAKE_AUTOMOC ON)
 
 include(FetchContent)
 FetchContent_Declare(
@@ -15,7 +16,7 @@ FetchContent_MakeAvailable(json)
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets Pdf)
 
-add_executable(coco main.cpp dance.cpp utils.cpp)
+add_executable(coco main.cpp dance.cpp utils.cpp gui.cpp)
 
 target_link_libraries(coco PRIVATE Qt6::Widgets Qt6::Pdf nlohmann_json::nlohmann_json)
 

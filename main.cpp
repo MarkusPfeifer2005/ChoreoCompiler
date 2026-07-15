@@ -1,5 +1,4 @@
 #include <algorithm>
-//#include <cstddef>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -7,11 +6,16 @@
 #include <fstream>
 #include <memory>
 #include <ostream>
+#include <qapplication.h>
+#include <qboxlayout.h>
 #include <qcontainerfwd.h>
+#include <qlayout.h>
+#include <qmainwindow.h>
 #include <qobjectdefs.h>
 #include <qpagesize.h>
 #include <qpainter.h>
 #include <qpdfwriter.h>
+#include <qslider.h>
 #include <qwidget.h>
 #include <string>
 #include <vector>
@@ -34,9 +38,14 @@
 #include <QPageSize>
 #include <QPushButton>
 #include <QVBoxLayout>
+#include <QSpinBox>
+#include <QSlider>
 #include "dance.h"
 #include "utils.h"
 #include "config.h"
+#include <QMainWindow>
+#include <QTextEdit>
+#include "gui.h"
 
 
 namespace fs = std::filesystem;
@@ -405,6 +414,7 @@ void generatePDF(std::string choreoFileName, std::string pdfName, bool topUp, in
     painter.end();
 }
 
+
 int main(int argc, char* argv[]) {
     if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0) {
         std::cout << "Usage: coco [OPTION] [FILE]...\n";
@@ -452,6 +462,19 @@ int main(int argc, char* argv[]) {
         }
         generatePDF(choreoFileName, pdfName, topUp);
     }
-    return EXIT_SUCCESS;
+
+    // Main GUI Program
+    MainWindow mainWindow;
+    mainWindow.show();
+
+
+
+
+
+
+
+
+
+    return app.exec();
 }
 
