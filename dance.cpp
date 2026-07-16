@@ -272,8 +272,14 @@ Choreo::Choreo(std::string filePath) {
 }
 
 std::ostream& operator<<(std::ostream& os, const Choreo& choreo) {
-    json j = {
+        json j = {
         {"_Comment", "This file was created with ChoreoCompiler."},
+        {"Name", choreo.name},
+        {"Subtitle", choreo.subtitle},
+        {"Variation", choreo.variation},
+        {"Author", choreo.author},
+        {"Description", choreo.description},
+        {"LastSaveDate", choreo.lastSaveDate},
         {"Settings", choreo.settings},
         {"Floor", choreo.floor},
         {"Roles", choreo.roles},
