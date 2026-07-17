@@ -1,10 +1,11 @@
 #include "gui.h"
 #include "dance.h"
 #include <fstream>
-#include <memory>
 #include <qaction.h>
 #include <qcoreapplication.h>
 #include <qdockwidget.h>
+#include <qgraphicsscene.h>
+#include <qgraphicsview.h>
 #include <qkeysequence.h>
 #include <QString>
 #include <QAction>
@@ -14,13 +15,17 @@
 #include <qmainwindow.h>
 #include <QDockWidget>
 #include <qnamespace.h>
+#include <qpaintdevice.h>
+#include <qpainter.h>
+#include <qstyleoption.h>
 #include <qtextedit.h>
 #include <QListWidget>
+#include <qwidget.h>
 #include <vector>
 
 OutlineWidget::OutlineWidget(std::vector<Scene>& scenes, QWidget* parent):
 QListWidget(parent), scenes(scenes) {
-    this->setEditTriggers(QAbstractItemView::DoubleClicked);  // works?
+    this->setEditTriggers(QAbstractItemView::DoubleClicked);
     this->setDragDropMode(QAbstractItemView::InternalMove);
     connect(this, &QListWidget::itemChanged, this, &OutlineWidget::onItemRenamed);
     connect(model(), &QAbstractItemModel::rowsMoved, this, &OutlineWidget::onItemMoved);
@@ -62,10 +67,19 @@ void OutlineWidget::onItemMoved(const QModelIndex&, int, int, const QModelIndex&
 
 MainWindow::MainWindow(QMainWindow* parent, Qt::WindowFlags flags):
 QMainWindow(parent, flags) {
-    editor = new DefinitionEditor;
-    setCentralWidget(editor);
     setWindowTitle("CoCo");
 
+    graphicScene = new QGraphicsScene(this);
+    canvas = new CanvasView(graphicScene, this);
+    setCentralWidget(canvas);
+    canvas->setRenderHint(QPainter::Antialiasing);
+    canvas->setDragMode(QGraphicsView::RubberBandDrag);
+
+    graphicScene->setSceneRect(0, 0, choreo.floor.getImWidth(), choreo.floor.getImHeight());
+    floorItem = new FloorItem(&choreo.floor);
+    graphicScene->addItem(floorItem);
+
+    editor = new DefinitionEditor;
     textDock = new QDockWidget(tr("definition text"), this);
     textDock->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
     textDock->setWidget(editor);
@@ -76,7 +90,7 @@ QMainWindow(parent, flags) {
     outline = new OutlineWidget{this->choreo.scenes};
     listDock->setWidget(outline);
     addDockWidget(Qt::LeftDockWidgetArea, listDock);
-    connect(outline, &QListWidget::itemClicked, this, &MainWindow::loadDefinition);
+    connect(outline, &QListWidget::itemClicked, this, &MainWindow::loadScene);
 
     statusBar();
 
@@ -148,8 +162,62 @@ void DefinitionEditor::save() {
     this->scene->text = this->toPlainText().toStdString();
 }
 
-void MainWindow::loadDefinition(QListWidgetItem *item) {
+void MainWindow::loadScene(QListWidgetItem *item) {
     int index = item->data(Qt::UserRole).toInt();
     this->editor->scene = &this->choreo.scenes[index];
     this->editor->setText(QString::fromStdString(this->editor->scene->text));
+
+    this->graphicScene->removeItem(this->floorItem);
+    this->graphicScene->clear();
+    this->graphicScene->addItem(this->floorItem);
+    for (auto& pos : this->editor->scene->positions) {
+        PositionItem* posItem = new PositionItem(&pos, &(choreo.floor));
+        this->graphicScene->addItem(posItem);
+    }
 }
+
+FloorItem::FloorItem(Floor* floor) : floor(floor) {
+    floor->setXYOffset(0, 0);
+}
+
+void FloorItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* style, QWidget* widget) {
+    this->floor->draw(*painter);
+}
+
+QRectF FloorItem::boundingRect() const {
+    return QRectF(0,0,floor->getImWidth(), floor->getImWidth());
+}
+
+DancerItem::DancerItem(Dancer* dancer) : dancer(dancer) {}
+
+QRectF DancerItem::boundingRect() const {
+    double radius = static_cast<double>(dancer->diameter)/2;
+    return QRectF(-radius, -radius, radius, radius);
+}
+
+void DancerItem::paint(QPainter* painter, const QStyleOptionGraphicsItem *style, QWidget *widget) {
+    this->dancer->draw(*painter, x, y);
+}
+
+PositionItem::PositionItem(Position* position, Floor* floor) : position(position),
+floor(floor){}
+
+QRectF PositionItem::boundingRect() const {
+    double radius = static_cast<double>(position->dancer->diameter)/2;
+    return QRectF(-radius, -radius, radius, radius);
+}
+
+void PositionItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* style, QWidget *widget) {
+    this->position->draw(*painter, *floor);
+}
+
+CanvasView::CanvasView(QGraphicsScene* scene, QWidget* parent)
+    : QGraphicsView(scene, parent) {}
+
+void CanvasView::resizeEvent(QResizeEvent* event) {
+    QGraphicsView::resizeEvent(event);
+    if (scene()) {
+        fitInView(scene()->sceneRect(), Qt::KeepAspectRatio);
+    }
+}
+

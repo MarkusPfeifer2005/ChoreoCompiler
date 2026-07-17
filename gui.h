@@ -8,13 +8,21 @@
 #include <QMenuBar>
 #include "dance.h"
 #include <QStatusBar>
-#include <memory>
+#include <qaction.h>
+#include <qgraphicsitem.h>
+#include <qgraphicsview.h>
 #include <qlistwidget.h>
 #include <qmainwindow.h>
 #include <QListWidget>
+#include <qpaintdevice.h>
+#include <qpainter.h>
+#include <qstyleoption.h>
 #include <qtextedit.h>
 #include <qtmetamacros.h>
+#include <qwidget.h>
 #include <vector>
+#include <QGraphicsView>
+#include <QGraphicsItem>
 
 
 class OutlineWidget : public QListWidget {
@@ -38,6 +46,44 @@ private slots:
     void save();
 };
 
+
+class CanvasView : public QGraphicsView {
+    Q_OBJECT
+public:
+    CanvasView(QGraphicsScene* scene, QWidget* parent = nullptr);
+protected:
+    void resizeEvent(QResizeEvent* event) override;
+};
+
+class FloorItem : public QGraphicsItem {
+public:
+    FloorItem(Floor*);
+    QRectF boundingRect() const override;
+    void paint(QPainter*, const QStyleOptionGraphicsItem*, QWidget*) override;
+private:
+    Floor* floor = nullptr;
+};
+
+class DancerItem : public QGraphicsItem {
+public:
+    DancerItem(Dancer*);
+    QRectF boundingRect() const override;
+    void paint(QPainter*, const QStyleOptionGraphicsItem*, QWidget*) override;
+    int x, y;
+private:
+    Dancer* dancer = nullptr;
+};
+
+class PositionItem : public QGraphicsItem {
+public:
+    PositionItem(Position*, Floor*);
+    QRectF boundingRect() const override;
+    void paint(QPainter*, const QStyleOptionGraphicsItem*, QWidget*) override;
+private:
+    Floor *floor = nullptr;
+    Position* position = nullptr;
+};
+
 class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
@@ -46,13 +92,16 @@ public:
     QDockWidget *textDock,
                 *listDock;
     OutlineWidget *outline;
+    QGraphicsScene* graphicScene;
+    CanvasView* canvas;
+    FloorItem* floorItem = nullptr;
     Choreo choreo;
 
 private slots:
     void newFile();
     void openFile();
     void saveFile();
-    void loadDefinition(QListWidgetItem*);
+    void loadScene(QListWidgetItem*);
 };
 
 #endif
