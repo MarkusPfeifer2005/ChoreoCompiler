@@ -6,9 +6,11 @@
 #include <QTextEdit>
 #include <QMenu>
 #include <QMenuBar>
+#include "config.h"
 #include "dance.h"
 #include <QStatusBar>
 #include <qaction.h>
+#include <qcontainerfwd.h>
 #include <qgraphicsitem.h>
 #include <qgraphicsview.h>
 #include <qlistwidget.h>
@@ -24,6 +26,9 @@
 #include <QGraphicsView>
 #include <QGraphicsItem>
 
+double m_to_px(double);
+double xPos_to_px(double);
+double yPos_to_px(double);
 
 class OutlineWidget : public QListWidget {
     Q_OBJECT
@@ -55,46 +60,58 @@ protected:
     void resizeEvent(QResizeEvent* event) override;
 };
 
-class FloorItem : public QGraphicsItem {
+
+class FloorScene : public QGraphicsScene {
+    Q_OBJECT
 public:
-    FloorItem(Floor*);
-    QRectF boundingRect() const override;
-    void paint(QPainter*, const QStyleOptionGraphicsItem*, QWidget*) override;
+    FloorScene(Floor*, QObject* = nullptr);
+    void setXYOffset(int, int);
+    bool topUp = false;
+    bool dragging = false;
+    std::vector<Position*> positions;
+protected:
+    void drawBackground(QPainter* painter, const QRectF& rect) override;
+    void drawForeground(QPainter* painter, const QRectF& rect) override;
+    void mousePressEvent(QGraphicsSceneMouseEvent* event) override;
+    void mouseReleaseEvent(QGraphicsSceneMouseEvent* event) override;
 private:
     Floor* floor = nullptr;
+    unsigned int getImWidth() const {return PX_M * floor->getWidth() + 2*BORDER;}
+    unsigned int getImHeight() const {return PX_M * floor->getHeight() + 2*BORDER;}
+    void drawTopLabel(QPainter*, QString) const;
+    void drawBottomLabel(QPainter*, QString) const;
 };
 
-class DancerItem : public QGraphicsItem {
-public:
-    DancerItem(Dancer*);
-    QRectF boundingRect() const override;
-    void paint(QPainter*, const QStyleOptionGraphicsItem*, QWidget*) override;
-    int x, y;
-private:
-    Dancer* dancer = nullptr;
-};
 
 class PositionItem : public QGraphicsItem {
 public:
-    PositionItem(Position*, Floor*);
+    PositionItem(Position*, Floor*, Dancer*, bool*, bool*);
     QRectF boundingRect() const override;
     void paint(QPainter*, const QStyleOptionGraphicsItem*, QWidget*) override;
+    void updatePos();
+    static int diameter;
+    static void drawDancerBody(QPainter*, Dancer*, int=0, int=0);
+protected:
+    QVariant itemChange(GraphicsItemChange change, const QVariant& value) override;
 private:
     Floor *floor = nullptr;
     Position* position = nullptr;
+    Dancer* dancer = nullptr;
+    bool *topUp = nullptr;
+    bool *dragging = nullptr;
 };
+
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
     MainWindow(QMainWindow* parent=nullptr, Qt::WindowFlags flags=Qt::WindowFlags());
-    DefinitionEditor* editor;
-    QDockWidget *textDock,
-                *listDock;
-    OutlineWidget *outline;
-    QGraphicsScene* graphicScene;
-    CanvasView* canvas;
-    FloorItem* floorItem = nullptr;
+    DefinitionEditor* editor = nullptr;
+    QDockWidget *textDock = nullptr,
+                *listDock = nullptr;
+    OutlineWidget *outline = nullptr;
+    FloorScene *floorScene = nullptr;
+    CanvasView* canvas = nullptr;
     Choreo choreo;
 
 private slots:

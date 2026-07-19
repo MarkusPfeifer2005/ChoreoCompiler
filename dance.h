@@ -3,9 +3,6 @@
 
 #include "build/_deps/json-src/include/nlohmann/detail/macro_scope.hpp"
 #include "nlohmann/json.hpp"
-#include <QImage>
-#include <qpolygon.h>
-#include "config.h"
 
 
 using json = nlohmann::json;
@@ -35,7 +32,6 @@ namespace nlohmann {
 
 class Floor {
 public:
-    static float px_m;
     unsigned int SizeFront = 8,
                  SizeBack = 8,
                  SizeLeft = 8,
@@ -44,18 +40,6 @@ public:
     Floor(json);
     unsigned int getHeight() const {return SizeFront + SizeBack;}
     unsigned int getWidth() const {return SizeLeft + SizeRight;}
-    unsigned int getImWidth() const {return px_m * getWidth() + 2*BORDER;}
-    unsigned int getImHeight() const {return px_m * getHeight() + 2*BORDER;}
-    void draw(QPainter&, bool=true) const;
-    void setXYOffset(int, int);
-    QImage getBlankImage();
-    int xOffset=0,
-        yOffset=0;
-    float xPos_to_px(float meter) const {return xOffset + BORDER + meter*px_m;}
-    float yPos_to_px(float meter) const {return yOffset + BORDER + meter*px_m;}
-    float m_to_px(float meter) const {return meter*px_m;}
-    void drawTopLabel(QPainter&, std::string) const;
-    void drawBottomLabel(QPainter&, std::string) const;
     NLOHMANN_DEFINE_TYPE_INTRUSIVE(Floor,
         SizeFront,
         SizeBack,
@@ -76,27 +60,24 @@ void to_json(json&, const Role&);
 
 
 class Dancer {
-  public:
+public:
     int id;
-    static int diameter;
     std::shared_ptr<Role> role;
     std::string name,
                 shortcut,
                 color;
     Dancer(json, std::vector<std::shared_ptr<Role>>&);
-    void draw(QPainter&, int, int);
 };
 
 void to_json(json&, const Dancer&);
 
 
 class Position {
-   public:
+public:
     std::shared_ptr<Dancer> dancer;
     double x,
            y;
     Position(json, std::vector<std::shared_ptr<Dancer>>&);
-    void draw(QPainter&, Floor, bool=true) const ;
 };
 
 void to_json(json&, const Position&);
@@ -108,7 +89,6 @@ struct Scene {
                 text;
     Scene(json, std::vector<std::shared_ptr<Dancer>>&);
     void print();
-    void draw(QPainter&, Floor&, int=0, bool=true) const;
 };
 
 void to_json(json&, const Scene&);
@@ -120,7 +100,7 @@ struct Settings {
         DancerPosition = 0,
         Resolution = 4;
     double Transparency = 0.,
-          DancerSize = .8;
+           DancerSize = .8;
     bool PositionsAtSide = true,
          GridLines = true,
          ShowTimestamps = false;
@@ -128,15 +108,15 @@ struct Settings {
     Settings(json);
     Settings() = default;
 NLOHMANN_DEFINE_TYPE_INTRUSIVE(Settings,
-        AnimationMilliseconds,
-        FrontPosition,
-        Resolution,
-        Transparency,
-        DancerSize,
-        PositionsAtSide,
-        GridLines,
-        ShowTimestamps,
-        FloorColor);
+    AnimationMilliseconds,
+    FrontPosition,
+    Resolution,
+    Transparency,
+    DancerSize,
+    PositionsAtSide,
+    GridLines,
+    ShowTimestamps,
+    FloorColor);
 };
 
 

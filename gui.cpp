@@ -1,5 +1,7 @@
 #include "gui.h"
+#include "config.h"
 #include "dance.h"
+#include "utils.h"
 #include <fstream>
 #include <qaction.h>
 #include <qcoreapplication.h>
@@ -22,6 +24,12 @@
 #include <QListWidget>
 #include <qwidget.h>
 #include <vector>
+
+double m_to_px(double meter) {return meter*PX_M;}
+
+double xPos_to_px(double meter) {return BORDER + meter*PX_M;}
+
+double yPos_to_px(double meter) {return BORDER + meter*PX_M;}
 
 OutlineWidget::OutlineWidget(std::vector<Scene>& scenes, QWidget* parent):
 QListWidget(parent), scenes(scenes) {
@@ -69,15 +77,12 @@ MainWindow::MainWindow(QMainWindow* parent, Qt::WindowFlags flags):
 QMainWindow(parent, flags) {
     setWindowTitle("CoCo");
 
-    graphicScene = new QGraphicsScene(this);
-    canvas = new CanvasView(graphicScene, this);
+    floorScene = new FloorScene(&this->choreo.floor, this);
+    canvas = new CanvasView(floorScene, this);
     setCentralWidget(canvas);
     canvas->setRenderHint(QPainter::Antialiasing);
     canvas->setDragMode(QGraphicsView::RubberBandDrag);
 
-    graphicScene->setSceneRect(0, 0, choreo.floor.getImWidth(), choreo.floor.getImHeight());
-    floorItem = new FloorItem(&choreo.floor);
-    graphicScene->addItem(floorItem);
 
     editor = new DefinitionEditor;
     textDock = new QDockWidget(tr("definition text"), this);
@@ -167,48 +172,216 @@ void MainWindow::loadScene(QListWidgetItem *item) {
     this->editor->scene = &this->choreo.scenes[index];
     this->editor->setText(QString::fromStdString(this->editor->scene->text));
 
-    this->graphicScene->removeItem(this->floorItem);
-    this->graphicScene->clear();
-    this->graphicScene->addItem(this->floorItem);
+    this->floorScene->clear();
+    this->floorScene->positions.clear();
     for (auto& pos : this->editor->scene->positions) {
-        PositionItem* posItem = new PositionItem(&pos, &(choreo.floor));
-        this->graphicScene->addItem(posItem);
+        PositionItem* posItem = new PositionItem(&pos, &choreo.floor, pos.dancer.get(), &floorScene->topUp, &floorScene->dragging);
+        posItem->updatePos();
+        this->floorScene->addItem(posItem);
+        this->floorScene->positions.push_back(&pos);
+    }
+    floorScene->update();
+}
+
+FloorScene::FloorScene(Floor* floor, QObject* parent) : QGraphicsScene(parent), floor(floor) {
+    setSceneRect(0, 0, getImWidth(), getImHeight());
+}
+
+void FloorScene::drawBackground(QPainter* painter, const QRectF& rect) {
+    QColor borderColor(GREEN),
+           fillColor(GRAY),
+           gridColor("#a9a9a9");
+    painter->setPen(Qt::NoPen);
+    painter->setBrush(QBrush(fillColor));
+    painter->drawRect(xPos_to_px(0) , yPos_to_px(0),
+            m_to_px(floor->getWidth()), m_to_px(floor->getHeight()));
+    painter->setPen(QPen(gridColor, 2));
+    for (int x = xPos_to_px(1); x < xPos_to_px(floor->getWidth()); x += m_to_px(1)) {
+        if (x == xPos_to_px(floor->getWidth()/2.))
+            continue;
+        painter->drawLine(x, yPos_to_px(0), x, yPos_to_px(floor->getHeight()));
+    }
+    for (int y = yPos_to_px(1); y < yPos_to_px(floor->getHeight()); y += m_to_px(1)) {
+        if (y == yPos_to_px(floor->getHeight()/2.))
+            continue;
+        painter->drawLine(xPos_to_px(0), y, xPos_to_px(floor->getWidth()), y);
+    }
+    painter->setPen(QPen(borderColor, 5));
+    painter->setBrush(Qt::NoBrush);
+    painter->drawRect(xPos_to_px(0), yPos_to_px(0), m_to_px(floor->getWidth()), m_to_px(floor->getHeight()));
+    painter->drawLine(xPos_to_px(0), yPos_to_px(floor->getHeight()/2.), xPos_to_px(floor->getWidth()), yPos_to_px(floor->getHeight()/2.));
+    painter->drawLine(xPos_to_px(floor->getWidth()/2.), yPos_to_px(0), xPos_to_px(floor->getWidth()/2.), yPos_to_px(floor->getHeight()));
+
+    QFont voHiFont = painter->font();
+    voHiFont.setPixelSize(PX_M*.45);
+    painter->setPen(QPen(gridColor));
+    painter->setFont(voHiFont);
+    if (topUp) {
+        drawTopLabel(painter, "Vorne");
+        drawBottomLabel(painter, "Hinten");
+    }
+    else {
+        drawTopLabel(painter, "Hinten");
+        drawBottomLabel(painter, "Vorne");
     }
 }
 
-FloorItem::FloorItem(Floor* floor) : floor(floor) {
-    floor->setXYOffset(0, 0);
+void FloorScene::drawForeground(QPainter* painter, const QRectF&) {
+    QFont annotationFont = painter->font();
+    annotationFont.setPixelSize(PX_M * .3);
+    QFontMetrics fm(annotationFont);
+    int annotationOffset = PX_M / 10;
+
+    painter->setPen(QPen(Qt::black));
+    painter->setFont(annotationFont);
+
+    for (Position* position : positions) {
+        double x, y;
+        if (topUp) {
+            y = yPos_to_px(floor->SizeBack + position->y);
+            x = xPos_to_px(floor->SizeLeft - position->x);
+        } else {
+            y = yPos_to_px(floor->SizeBack - position->y);
+            x = xPos_to_px(floor->SizeLeft + position->x);
+        }
+
+        if (position->y != 0) {
+            QString text = QString::number(std::abs(position->y));
+            int textWidth = fm.horizontalAdvance(text);
+            int drawY = y - fm.height()/2. + fm.ascent();
+            painter->drawText(xPos_to_px(0) + annotationOffset, drawY, text);
+            painter->drawText(xPos_to_px(floor->getWidth()) - annotationOffset - textWidth, drawY, text);
+        }
+        if (position->x != 0) {
+            QString text = QString::number(std::abs(position->x));
+            int textWidth = fm.horizontalAdvance(text);
+            int drawX = x - textWidth/2.;
+            painter->drawText(drawX, yPos_to_px(0) + fm.ascent(), text);
+            painter->drawText(drawX, yPos_to_px(floor->getHeight()) - fm.descent(), text);
+        }
+    }
 }
 
-void FloorItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* style, QWidget* widget) {
-    this->floor->draw(*painter);
+void FloorScene::drawTopLabel(QPainter* painter, QString label) const {
+    painter->drawText(
+            QRect(xPos_to_px(0), 0, m_to_px(floor->getWidth()), BORDER),
+            Qt::AlignHCenter | Qt::AlignVCenter,
+            label
+            );
 }
 
-QRectF FloorItem::boundingRect() const {
-    return QRectF(0,0,floor->getImWidth(), floor->getImWidth());
+void FloorScene::drawBottomLabel(QPainter* painter, QString label) const {
+    painter->drawText(
+            QRect(xPos_to_px(0), yPos_to_px(floor->getHeight()), m_to_px(floor->getWidth()), BORDER),
+            Qt::AlignHCenter | Qt::AlignVCenter,
+            label
+            );
 }
 
-DancerItem::DancerItem(Dancer* dancer) : dancer(dancer) {}
-
-QRectF DancerItem::boundingRect() const {
-    double radius = static_cast<double>(dancer->diameter)/2;
-    return QRectF(-radius, -radius, radius, radius);
+PositionItem::PositionItem(Position* position, Floor* floor, Dancer *dancer,
+    bool *topUp, bool *dragging) :
+    position(position), floor(floor), dancer(dancer), topUp(topUp),
+    dragging(dragging) {
+    setFlag(QGraphicsItem::ItemIsMovable);
+    setFlag(QGraphicsItem::ItemIsSelectable);
+    setFlag(QGraphicsItem::ItemSendsGeometryChanges);
 }
 
-void DancerItem::paint(QPainter* painter, const QStyleOptionGraphicsItem *style, QWidget *widget) {
-    this->dancer->draw(*painter, x, y);
-}
-
-PositionItem::PositionItem(Position* position, Floor* floor) : position(position),
-floor(floor){}
+int PositionItem::diameter = PX_M;
 
 QRectF PositionItem::boundingRect() const {
-    double radius = static_cast<double>(position->dancer->diameter)/2;
-    return QRectF(-radius, -radius, radius, radius);
+    double radius = static_cast<double>(diameter) / 2.;
+    return QRectF(-radius, -radius, diameter, diameter);
 }
 
-void PositionItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* style, QWidget *widget) {
-    this->position->draw(*painter, *floor);
+void PositionItem::drawDancerBody(QPainter* painter, Dancer* dancer, int x, int y) {
+    int diameter = PositionItem::diameter;
+    QFont dancerFont = painter->font();
+    dancerFont.setPixelSize(diameter * .4);
+    QColor col(dancer->color.c_str());
+    painter->setPen(Qt::NoPen);
+    painter->setBrush(QBrush(col));
+    double centerX = x - diameter/2.,
+           centerY = y - diameter/2.;
+    painter->drawEllipse(centerX, centerY, diameter, diameter);
+    painter->setPen(QPen(getTextColor(col)));
+    painter->setFont(dancerFont);
+    painter->drawText(QRect(centerX, centerY, diameter, diameter),
+                       Qt::AlignCenter, dancer->shortcut.c_str());
+
+}
+
+void PositionItem::paint(QPainter* painter, const QStyleOptionGraphicsItem *style, QWidget*) {
+    drawDancerBody(painter, dancer);
+
+    if (style->state & QStyle::State_Selected) {
+        painter->setPen(QPen(QColor("orange"), 4));
+        painter->setBrush(Qt::NoBrush);
+        double radius = static_cast<double>(diameter) / 2;
+        painter->drawEllipse(QRectF(-radius, -radius, diameter, diameter));
+    }
+}
+
+void FloorScene::mousePressEvent(QGraphicsSceneMouseEvent* event) {
+    dragging = true;
+    QGraphicsScene::mousePressEvent(event);
+}
+
+void FloorScene::mouseReleaseEvent(QGraphicsSceneMouseEvent* event) {
+    dragging = false;
+    QGraphicsScene::mouseReleaseEvent(event);
+}
+
+void PositionItem::updatePos() {
+    double px, py;
+    if (*topUp) {
+        py = yPos_to_px(floor->SizeBack - position->y);
+        px = xPos_to_px(floor->SizeLeft + position->x);
+    } else {
+        py = yPos_to_px(floor->SizeBack + position->y);
+        px = xPos_to_px(floor->SizeLeft - position->x);
+    }
+    setPos(px, py);
+}
+
+QVariant PositionItem::itemChange(GraphicsItemChange change, const QVariant& value) {
+    if (change == ItemPositionChange && *dragging) {
+        // runs BEFORE the move is applied — value is the proposed new pos.
+        // Returning a modified QPointF here overrides where the item actually ends up.
+        QPointF p = value.toPointF();
+        double xMeter = (p.x() - BORDER) / PX_M;
+        double yMeter = (p.y() - BORDER) / PX_M;
+
+        // snap to a 0.25 m grid
+        const double gridSize = 0.25;
+        xMeter = std::round(xMeter / gridSize) * gridSize;
+        yMeter = std::round(yMeter / gridSize) * gridSize;
+
+        // clamp to floor boundaries (0 .. width/height in meters)
+        xMeter = std::clamp(xMeter, 0.0, static_cast<double>(floor->getWidth()));
+        yMeter = std::clamp(yMeter, 0.0, static_cast<double>(floor->getHeight()));
+
+        double snappedX = BORDER + xMeter * PX_M;
+        double snappedY = BORDER + yMeter * PX_M;
+        return QPointF(snappedX, snappedY);
+    }
+
+    if (change == ItemPositionHasChanged) {
+        // runs AFTER the move is applied
+        QPointF p = value.toPointF();
+        double xMeter = (p.x() - BORDER) / PX_M;
+        double yMeter = (p.y() - BORDER) / PX_M;
+        if (*topUp) {
+            position->x = floor->SizeLeft - xMeter;
+            position->y = yMeter - floor->SizeBack;
+        } else {
+            position->x = xMeter - floor->SizeLeft;
+            position->y = floor->SizeBack - yMeter;
+        }
+        if (scene()) scene()->update();
+    }
+
+    return QGraphicsItem::itemChange(change, value);
 }
 
 CanvasView::CanvasView(QGraphicsScene* scene, QWidget* parent)

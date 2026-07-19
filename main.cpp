@@ -50,6 +50,40 @@
 
 namespace fs = std::filesystem;
 
+FloorScene* buildSceneForExport(Scene& scene, Floor& floor, int roleID, bool topUp) {
+    FloorScene* exportScene = new FloorScene(&floor);
+    exportScene->topUp = topUp;
+    for (auto& pos : scene.positions) {
+        PositionItem* item = new PositionItem(&pos, &floor, pos.dancer.get(), &exportScene->topUp, &exportScene->dragging);
+        item->updatePos();
+        if (roleID >= 0 && pos.dancer->role->id == roleID) {
+            item->setZValue(1);
+        }
+        exportScene->addItem(item);
+        exportScene->positions.push_back(&pos);
+    }
+    return exportScene;
+}
+
+QImage renderSceneToImage(Scene& scene, Floor& floor, int roleID = -1, bool topUp = true) {
+    FloorScene* exportScene = buildSceneForExport(scene, floor, roleID, topUp);
+    QImage image(exportScene->sceneRect().width(), exportScene->sceneRect().height(), QImage::Format_ARGB32);
+    image.fill(Qt::white);
+    QPainter painter(&image);
+    painter.setRenderHint(QPainter::Antialiasing);
+    exportScene->render(&painter);
+    painter.end();
+    delete exportScene;
+    return image;
+}
+
+void renderSceneToPdf(QPainter& painter, Scene& scene, Floor& floor, QPointF targetTopLeft, int roleID = -1, bool topUp = true) {
+    FloorScene* exportScene = buildSceneForExport(scene, floor, roleID, topUp);
+    QRectF sceneRect = exportScene->sceneRect();
+    QRectF targetRect(targetTopLeft, sceneRect.size());   // native size, positioned at targetTopLeft — same semantics as the old setXYOffset
+    exportScene->render(&painter, targetRect, sceneRect);
+    delete exportScene;
+}
 
 void generateAnki(std::string choreoFileName, std::string dancerName) {
     Choreo choreo{choreoFileName};
@@ -81,11 +115,8 @@ void generateAnki(std::string choreoFileName, std::string dancerName) {
     notes << "#html:true\n";
     notes << "#notetype Basic\n";
 
-    for (const Scene scene : choreo.scenes) {
-        QImage image(choreo.floor.getImWidth(), choreo.floor.getImHeight(), QImage::Format_ARGB32);
-        image.fill(Qt::white);
-        QPainter painter(&image);
-        scene.draw(painter, choreo.floor, dancerRoleID);
+    for (Scene scene : choreo.scenes) {
+        QImage image = renderSceneToImage(scene, choreo.floor, dancerRoleID);
 
         notes << "\"" << find_and_replace(scene.name, "\"", "\"\"") << "\"\t\"";
         for (const Position pos : scene.positions) {
@@ -333,7 +364,7 @@ void drawTeamList(QPainter& painter,
                     Qt::AlignHCenter | Qt::AlignVCenter,
                     dancer->name.c_str()
                     );
-            dancer->draw(painter, MARGIN + roleWidth + symbolWidth/2, Y +rowHeight/2);
+            PositionItem::drawDancerBody(&painter, &*dancer, MARGIN + roleWidth + symbolWidth/2, Y + rowHeight/2); 
             Y+=rowHeight;
         }
     }
@@ -386,8 +417,6 @@ void drawTitlePage(QPainter& painter, Choreo& choreo) {
 
 void generatePDF(std::string choreoFileName, std::string pdfName, bool topUp, int dpi=300) {
     Choreo choreo(choreoFileName);
-    choreo.floor.px_m = 108;
-    Dancer::diameter = choreo.floor.px_m;
 
     QPdfWriter writer(pdfName.c_str());
     writer.setPageSize(QPageSize::A4);
@@ -406,14 +435,13 @@ void generatePDF(std::string choreoFileName, std::string pdfName, bool topUp, in
         drawFooterHeader(painter, currPage, totalPages, choreo.name);
         drawTitle(painter, scene.name, currPage, totalPages);
         drawTextBox(painter, QString::fromStdString(scene.text));
-        choreo.floor.setXYOffset(MARGIN-BORDER, 300);
-        scene.draw(painter, choreo.floor, 2, topUp);
+        renderSceneToPdf(painter, scene, choreo.floor, QPointF(MARGIN - BORDER, 300), 2, topUp);
+
         drawSidePanel(painter, scene, choreo.roles);
         currPage++;
     }
     painter.end();
 }
-
 
 int main(int argc, char* argv[]) {
     if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0) {
@@ -421,12 +449,13 @@ int main(int argc, char* argv[]) {
         std::cout << "  -h, --help\tdisplay this help\n";
         std::cout << "  -l, --list\tlist all dancers\n";
         std::cout << "  -a, --anki\tgenerate anki cards for the provided dancer\n";
+        std::cout << "  -p, --pdf \tgenerate pdf of the choreography\n";
         std::cout << "      --topUp\torient the top of the dance floor to face upwards\n";
         std::cout << "\nExamples:\n";
         std::cout << "coco --list MyChoreography.choreo\n";
         std::cout << "coco --anki 'FistName LastName' MyChoreography.choreo\n";
-        std::cout << "coco MyChoreography.choreo Output.pdf\n";
-        std::cout << "coco MyChoreography.choreo Output.pdf --topUp\n";
+        std::cout << "coco --pdf MyChoreography.choreo Output.pdf\n";
+        std::cout << "coco --pdf MyChoreography.choreo Output.pdf --topUp\n";
         std::cout << std::endl;
         return EXIT_SUCCESS;
     }
@@ -443,6 +472,7 @@ int main(int argc, char* argv[]) {
     }
     else if (strcmp(argv[1], "--anki") == 0 || strcmp(argv[1], "-a") == 0) {
         generateAnki(argv[3], argv[2]);
+        return EXIT_SUCCESS;
     }
     else if (strcmp(argv[1], "--pdf") == 0 || strcmp(argv[1], "-p") == 0) {
         bool topUp = false;
@@ -461,6 +491,7 @@ int main(int argc, char* argv[]) {
             }
         }
         generatePDF(choreoFileName, pdfName, topUp);
+        return EXIT_SUCCESS;
     }
 
     // Main GUI Program
