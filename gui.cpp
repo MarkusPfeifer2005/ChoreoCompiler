@@ -24,6 +24,8 @@
 #include <QListWidget>
 #include <qwidget.h>
 #include <vector>
+#include <QToolBar>
+#include "export.h"
 
 double m_to_px(double meter) {return meter*PX_M;}
 
@@ -31,6 +33,7 @@ double xPos_to_px(double meter) {return BORDER + meter*PX_M;}
 
 double yPos_to_px(double meter) {return BORDER + meter*PX_M;}
 
+// Document Outline
 OutlineWidget::OutlineWidget(std::vector<Scene>& scenes, QWidget* parent):
 QListWidget(parent), scenes(scenes) {
     this->setEditTriggers(QAbstractItemView::DoubleClicked);
@@ -73,6 +76,7 @@ void OutlineWidget::onItemMoved(const QModelIndex&, int, int, const QModelIndex&
     }
 }
 
+// Main Window
 MainWindow::MainWindow(QMainWindow* parent, Qt::WindowFlags flags):
 QMainWindow(parent, flags) {
     setWindowTitle("CoCo");
@@ -82,7 +86,6 @@ QMainWindow(parent, flags) {
     setCentralWidget(canvas);
     canvas->setRenderHint(QPainter::Antialiasing);
     canvas->setDragMode(QGraphicsView::RubberBandDrag);
-
 
     editor = new DefinitionEditor;
     textDock = new QDockWidget(tr("definition text"), this);
@@ -120,10 +123,31 @@ QMainWindow(parent, flags) {
     actSaveFile->setStatusTip(tr("Saves the currently opened file."));
     connect(actSaveFile, &QAction::triggered, this, &MainWindow::saveFile);
 
+    QAction* actPdfExport = fileMenu->addAction(tr("&Export"));
+    actPdfExport->setShortcut(QKeySequence(tr("Ctrl+E", "File|Export")));
+    actPdfExport->setStatusTip(tr("Exports the choreo to PDF."));
+    connect(actPdfExport, &QAction::triggered, this, &MainWindow::pdfExport);
+
+    gridSizeCombo = new QComboBox(this);
+    gridSizeCombo->addItem(tr("No grid"), 0.0);
+    gridSizeCombo->addItem(tr("Coarse (1 m)"), 1.0);
+    gridSizeCombo->addItem(tr("Medium (0.5 m)"), 0.5);
+    gridSizeCombo->addItem(tr("Fine (0.25 m)"), 0.25);
+    gridSizeCombo->setCurrentIndex(3);   // matches FloorScene's default of 0.25
+    connect(gridSizeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &MainWindow::onGridSizeChanged);
+
+    QToolBar* toolFile = addToolBar(tr("File"));
+    toolFile->addAction(actSaveFile);
+    toolFile->addWidget(gridSizeCombo);
 }
 
 void MainWindow::newFile() {
-    editor->clear();
+    //editor->clear();
+}
+
+void MainWindow::onGridSizeChanged(int index) {
+    floorScene->gridSize = gridSizeCombo->itemData(index).toDouble();
 }
 
 void MainWindow::openFile() {
@@ -159,6 +183,20 @@ void MainWindow::saveFile() {
     file.close();
 }
 
+void MainWindow::pdfExport() {
+    QString fileName = QFileDialog::getSaveFileName(
+        this,
+        tr("Export File"),
+        "",
+        tr("PDF files (*.pdf)")
+    );
+    if (fileName.isEmpty()) {
+        statusBar()->showMessage(tr("No file exported!"));
+        return;
+    }
+    generatePDF(this->choreo, fileName.toStdString(), false);
+}
+
 DefinitionEditor::DefinitionEditor(QWidget* parent): QTextEdit(parent) {
     connect(this, &DefinitionEditor::textChanged, this, &DefinitionEditor::save);
 }
@@ -175,7 +213,8 @@ void MainWindow::loadScene(QListWidgetItem *item) {
     this->floorScene->clear();
     this->floorScene->positions.clear();
     for (auto& pos : this->editor->scene->positions) {
-        PositionItem* posItem = new PositionItem(&pos, &choreo.floor, pos.dancer.get(), &floorScene->topUp, &floorScene->dragging);
+        PositionItem* posItem = new PositionItem(&pos, &choreo.floor, pos.dancer.get(),
+                &floorScene->topUp, &floorScene->dragging, &floorScene->gridSize);
         posItem->updatePos();
         this->floorScene->addItem(posItem);
         this->floorScene->positions.push_back(&pos);
@@ -279,9 +318,9 @@ void FloorScene::drawBottomLabel(QPainter* painter, QString label) const {
 }
 
 PositionItem::PositionItem(Position* position, Floor* floor, Dancer *dancer,
-    bool *topUp, bool *dragging) :
+    bool *topUp, bool *dragging, double *gridSize) :
     position(position), floor(floor), dancer(dancer), topUp(topUp),
-    dragging(dragging) {
+    dragging(dragging), gridSize(gridSize) {
     setFlag(QGraphicsItem::ItemIsMovable);
     setFlag(QGraphicsItem::ItemIsSelectable);
     setFlag(QGraphicsItem::ItemSendsGeometryChanges);
@@ -353,9 +392,10 @@ QVariant PositionItem::itemChange(GraphicsItemChange change, const QVariant& val
         double yMeter = (p.y() - BORDER) / PX_M;
 
         // snap to a 0.25 m grid
-        const double gridSize = 0.25;
-        xMeter = std::round(xMeter / gridSize) * gridSize;
-        yMeter = std::round(yMeter / gridSize) * gridSize;
+        if (*gridSize > 0) {
+            xMeter = std::round(xMeter / *gridSize) * *gridSize;
+            yMeter = std::round(yMeter / *gridSize) * *gridSize;
+        }
 
         // clamp to floor boundaries (0 .. width/height in meters)
         xMeter = std::clamp(xMeter, 0.0, static_cast<double>(floor->getWidth()));

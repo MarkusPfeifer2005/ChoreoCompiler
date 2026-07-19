@@ -25,6 +25,7 @@
 #include <vector>
 #include <QGraphicsView>
 #include <QGraphicsItem>
+#include <QComboBox>
 
 double m_to_px(double);
 double xPos_to_px(double);
@@ -68,6 +69,7 @@ public:
     void setXYOffset(int, int);
     bool topUp = false;
     bool dragging = false;
+    double gridSize = .5;
     std::vector<Position*> positions;
 protected:
     void drawBackground(QPainter* painter, const QRectF& rect) override;
@@ -85,7 +87,7 @@ private:
 
 class PositionItem : public QGraphicsItem {
 public:
-    PositionItem(Position*, Floor*, Dancer*, bool*, bool*);
+    PositionItem(Position*, Floor*, Dancer*, bool*, bool*, double*);
     QRectF boundingRect() const override;
     void paint(QPainter*, const QStyleOptionGraphicsItem*, QWidget*) override;
     void updatePos();
@@ -99,6 +101,7 @@ private:
     Dancer* dancer = nullptr;
     bool *topUp = nullptr;
     bool *dragging = nullptr;
+    double *gridSize = nullptr;
 };
 
 
@@ -113,12 +116,15 @@ public:
     FloorScene *floorScene = nullptr;
     CanvasView* canvas = nullptr;
     Choreo choreo;
-
+private:
+    QComboBox* gridSizeCombo = nullptr;
 private slots:
     void newFile();
     void openFile();
     void saveFile();
     void loadScene(QListWidgetItem*);
+    void pdfExport();
+    void onGridSizeChanged(int index);
 };
 
 #endif
