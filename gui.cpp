@@ -28,12 +28,333 @@
 #include <QToolBar>
 #include "export.h"
 #include <QContextMenuEvent>
+#include <algorithm>   // std::max
 
 double m_to_px(double meter) {return meter*PX_M;}
 
 double xPos_to_px(double meter) {return BORDER + meter*PX_M;}
 
 double yPos_to_px(double meter) {return BORDER + meter*PX_M;}
+
+
+// --- RoleListWidget ---
+
+RoleListWidget::RoleListWidget(std::vector<std::shared_ptr<Role>>* roles, QWidget* parent)
+    : QListWidget(parent), roles(roles) {
+    load();
+}
+
+void RoleListWidget::load() {
+    clear();
+    for (size_t i = 0; i < roles->size(); i++) {
+        QListWidgetItem* item = new QListWidgetItem(QString::fromStdString((*roles)[i]->name));
+        item->setData(Qt::UserRole, static_cast<int>(i));
+        addItem(item);
+    }
+}
+
+// --- RoleDialog ---
+
+RoleDialog::RoleDialog(std::vector<std::shared_ptr<Role>>* roles, std::vector<std::shared_ptr<Dancer>>* dancers, QWidget* parent)
+    : QDialog(parent), roles(roles), dancers(dancers) {
+    setWindowTitle(tr("Manage Roles"));
+
+    roleList = new RoleListWidget(roles, this);
+    connect(roleList, &QListWidget::currentRowChanged, this, &RoleDialog::onSelectionChanged);
+
+    nameEdit = new QLineEdit(this);
+    connect(nameEdit, &QLineEdit::textEdited, this, &RoleDialog::onNameEdited);
+
+    colorButton = new QPushButton(tr("Choose Color"), this);
+    connect(colorButton, &QPushButton::clicked, this, &RoleDialog::onColorClicked);
+
+    zIndexSpin = new QSpinBox(this);
+    zIndexSpin->setRange(0, 999);
+    connect(zIndexSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, &RoleDialog::onZIndexChanged);
+
+    QPushButton* addButton = new QPushButton(tr("Add Role"), this);
+    connect(addButton, &QPushButton::clicked, this, &RoleDialog::onAddClicked);
+    QPushButton* removeButton = new QPushButton(tr("Remove Role"), this);
+    connect(removeButton, &QPushButton::clicked, this, &RoleDialog::onRemoveClicked);
+
+    QFormLayout* form = new QFormLayout;
+    form->addRow(tr("Name:"), nameEdit);
+    form->addRow(tr("Color:"), colorButton);
+    form->addRow(tr("Z-Index:"), zIndexSpin);
+
+    QHBoxLayout* listButtons = new QHBoxLayout;
+    listButtons->addWidget(addButton);
+    listButtons->addWidget(removeButton);
+
+    QVBoxLayout* leftSide = new QVBoxLayout;
+    leftSide->addWidget(roleList);
+    leftSide->addLayout(listButtons);
+
+    QHBoxLayout* mainLayout = new QHBoxLayout(this);
+    mainLayout->addLayout(leftSide);
+    mainLayout->addLayout(form);
+
+    if (!roles->empty()) {
+        roleList->setCurrentRow(0);
+    } else {
+        nameEdit->setEnabled(false);
+        colorButton->setEnabled(false);
+        zIndexSpin->setEnabled(false);
+    }
+}
+
+void RoleDialog::showRole(int index) {
+    if (index < 0 || index >= static_cast<int>(roles->size())) return;
+    auto& role = (*roles)[index];
+    nameEdit->setText(QString::fromStdString(role->name));
+    currentColor = QColor(role->color.c_str());
+    updateColorButton();
+    zIndexSpin->setValue(role->zIndex);
+}
+
+void RoleDialog::updateColorButton() {
+    colorButton->setStyleSheet(QString("background-color: %1;").arg(currentColor.name(QColor::HexArgb)));
+}
+
+void RoleDialog::onSelectionChanged() {
+    int index = roleList->currentRow();
+    bool has = index >= 0;
+    nameEdit->setEnabled(has);
+    colorButton->setEnabled(has);
+    zIndexSpin->setEnabled(has);
+    if (has) showRole(index);
+}
+
+void RoleDialog::onNameEdited(const QString& text) {
+    int index = roleList->currentRow();
+    if (index < 0) return;
+    (*roles)[index]->name = text.toStdString();
+    roleList->item(index)->setText(text);
+}
+
+void RoleDialog::onZIndexChanged(int value) {
+    int index = roleList->currentRow();
+    if (index < 0) return;
+    (*roles)[index]->zIndex = value;
+}
+
+void RoleDialog::onColorClicked() {
+    int index = roleList->currentRow();
+    if (index < 0) return;
+    QColor chosen = QColorDialog::getColor(currentColor, this, tr("Choose Role Color"), QColorDialog::ShowAlphaChannel);
+    if (chosen.isValid()) {
+        currentColor = chosen;
+        updateColorButton();
+        (*roles)[index]->color = currentColor.name(QColor::HexArgb).toStdString();
+    }
+}
+
+void RoleDialog::onAddClicked() {
+    int newId = 0;
+    for (const auto& r : *roles) newId = std::max(newId, r->id + 1);
+    roles->push_back(std::make_shared<Role>("New Role", newId, "#FF808080", static_cast<int>(roles->size())));
+    roleList->load();
+    roleList->setCurrentRow(static_cast<int>(roles->size()) - 1);
+}
+
+void RoleDialog::onRemoveClicked() {
+    int index = roleList->currentRow();
+    if (index < 0) return;
+    int roleID = (*roles)[index]->id;
+    for (const auto& d : *dancers) {
+        if (d->role && d->role->id == roleID) {
+            QMessageBox::warning(this, tr("Cannot Remove Role"),
+                tr("This role is still assigned to at least one dancer. Reassign those dancers first."));
+            return;
+        }
+    }
+    roles->erase(roles->begin() + index);
+    roleList->load();
+    if (!roles->empty()) {
+        roleList->setCurrentRow(std::min(index, static_cast<int>(roles->size()) - 1));
+    } else {
+        nameEdit->clear();
+        nameEdit->setEnabled(false);
+        colorButton->setEnabled(false);
+        zIndexSpin->setEnabled(false);
+    }
+}
+
+// --- DancerListWidget ---
+
+DancerListWidget::DancerListWidget(std::vector<std::shared_ptr<Dancer>>* dancers, QWidget* parent)
+    : QListWidget(parent), dancers(dancers) {
+    load();
+}
+
+void DancerListWidget::load() {
+    clear();
+    for (size_t i = 0; i < dancers->size(); i++) {
+        QListWidgetItem* item = new QListWidgetItem(QString::fromStdString((*dancers)[i]->name));
+        item->setData(Qt::UserRole, static_cast<int>(i));
+        addItem(item);
+    }
+}
+
+// --- DancerDialog ---
+
+DancerDialog::DancerDialog(std::vector<std::shared_ptr<Dancer>>* dancers,
+        std::vector<std::shared_ptr<Role>>* roles, QWidget* parent)
+    : QDialog(parent), dancers(dancers), roles(roles) {
+    setWindowTitle(tr("Manage Dancers"));
+
+    dancerList = new DancerListWidget(dancers, this);
+    connect(dancerList, &QListWidget::currentRowChanged, this, &DancerDialog::onSelectionChanged);
+
+    nameEdit = new QLineEdit(this);
+    connect(nameEdit, &QLineEdit::textEdited, this, &DancerDialog::onNameEdited);
+
+    shortcutEdit = new QLineEdit(this);
+    connect(shortcutEdit, &QLineEdit::textEdited, this, &DancerDialog::onShortcutEdited);
+
+    roleCombo = new QComboBox(this);
+    connect(roleCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &DancerDialog::onRoleChanged);
+
+    colorButton = new QPushButton(tr("Choose Color"), this);
+    connect(colorButton, &QPushButton::clicked, this, &DancerDialog::onColorClicked);
+
+    QPushButton* addButton = new QPushButton(tr("Add Dancer"), this);
+    connect(addButton, &QPushButton::clicked, this, &DancerDialog::onAddClicked);
+    QPushButton* removeButton = new QPushButton(tr("Remove Dancer"), this);
+    connect(removeButton, &QPushButton::clicked, this, &DancerDialog::onRemoveClicked);
+
+    QFormLayout* form = new QFormLayout;
+    form->addRow(tr("Name:"), nameEdit);
+    form->addRow(tr("Shortcut:"), shortcutEdit);
+    form->addRow(tr("Role:"), roleCombo);
+    form->addRow(tr("Color:"), colorButton);
+
+    QHBoxLayout* listButtons = new QHBoxLayout;
+    listButtons->addWidget(addButton);
+    listButtons->addWidget(removeButton);
+
+    QVBoxLayout* leftSide = new QVBoxLayout;
+    leftSide->addWidget(dancerList);
+    leftSide->addLayout(listButtons);
+
+    QHBoxLayout* mainLayout = new QHBoxLayout(this);
+    mainLayout->addLayout(leftSide);
+    mainLayout->addLayout(form);
+
+    reloadRoleCombo();
+    if (!dancers->empty()) {
+        dancerList->setCurrentRow(0);
+    } else {
+        nameEdit->setEnabled(false);
+        shortcutEdit->setEnabled(false);
+        roleCombo->setEnabled(false);
+        colorButton->setEnabled(false);
+    }
+}
+
+void DancerDialog::reloadRoleCombo() {
+    roleCombo->blockSignals(true);
+    roleCombo->clear();
+    for (const auto& role : *roles) {
+        roleCombo->addItem(QString::fromStdString(role->name), role->id);
+    }
+    roleCombo->blockSignals(false);
+}
+
+void DancerDialog::showDancer(int index) {
+    if (index < 0 || index >= static_cast<int>(dancers->size())) return;
+    auto& dancer = (*dancers)[index];
+    nameEdit->setText(QString::fromStdString(dancer->name));
+    shortcutEdit->setText(QString::fromStdString(dancer->shortcut));
+    currentColor = QColor(dancer->color.c_str());
+    updateColorButton();
+
+    reloadRoleCombo();
+    if (dancer->role) {
+        roleCombo->blockSignals(true);
+        roleCombo->setCurrentIndex(roleCombo->findData(dancer->role->id));
+        roleCombo->blockSignals(false);
+    }
+}
+
+void DancerDialog::updateColorButton() {
+    colorButton->setStyleSheet(QString("background-color: %1;").arg(currentColor.name(QColor::HexArgb)));
+}
+
+void DancerDialog::onSelectionChanged() {
+    int index = dancerList->currentRow();
+    bool has = index >= 0;
+    nameEdit->setEnabled(has);
+    shortcutEdit->setEnabled(has);
+    roleCombo->setEnabled(has);
+    colorButton->setEnabled(has);
+    if (has) showDancer(index);
+}
+
+void DancerDialog::onNameEdited(const QString& text) {
+    int index = dancerList->currentRow();
+    if (index < 0) return;
+    (*dancers)[index]->name = text.toStdString();
+    dancerList->item(index)->setText(text);
+}
+
+void DancerDialog::onShortcutEdited(const QString& text) {
+    int index = dancerList->currentRow();
+    if (index < 0) return;
+    (*dancers)[index]->shortcut = text.toStdString();
+}
+
+void DancerDialog::onRoleChanged(int comboIndex) {
+    int index = dancerList->currentRow();
+    if (index < 0 || comboIndex < 0) return;
+    int roleID = roleCombo->itemData(comboIndex).toInt();
+    for (auto& role : *roles) {
+        if (role->id == roleID) {
+            (*dancers)[index]->role = role;
+            break;
+        }
+    }
+}
+
+void DancerDialog::onColorClicked() {
+    int index = dancerList->currentRow();
+    if (index < 0) return;
+    QColor chosen = QColorDialog::getColor(currentColor, this, tr("Choose Dancer Color"), QColorDialog::ShowAlphaChannel);
+    if (chosen.isValid()) {
+        currentColor = chosen;
+        updateColorButton();
+        (*dancers)[index]->color = currentColor.name(QColor::HexArgb).toStdString();
+    }
+}
+
+void DancerDialog::onAddClicked() {
+    if (roles->empty()) {
+        QMessageBox::warning(this, tr("No Roles"), tr("Create at least one role before adding dancers."));
+        return;
+    }
+    int newId = 0;
+    for (const auto& d : *dancers) newId = std::max(newId, d->id + 1);
+    dancers->push_back(std::make_shared<Dancer>("New Dancer", newId, "?", (*roles)[0]));
+    dancerList->load();
+    dancerList->setCurrentRow(static_cast<int>(dancers->size()) - 1);
+}
+
+void DancerDialog::onRemoveClicked() {
+    int index = dancerList->currentRow();
+    if (index < 0) return;
+    dancers->erase(dancers->begin() + index);
+    dancerList->load();
+    if (!dancers->empty()) {
+        dancerList->setCurrentRow(std::min(index, static_cast<int>(dancers->size()) - 1));
+    } else {
+        nameEdit->clear();
+        shortcutEdit->clear();
+        nameEdit->setEnabled(false);
+        shortcutEdit->setEnabled(false);
+        roleCombo->setEnabled(false);
+        colorButton->setEnabled(false);
+    }
+}
 
 // Document Outline
 OutlineWidget::OutlineWidget(std::vector<Scene>& scenes, QWidget* parent):
@@ -184,6 +505,15 @@ QMainWindow(parent, flags) {
     QToolBar* toolFile = addToolBar(tr("File"));
     toolFile->addAction(actSaveFile);
     toolFile->addWidget(gridSizeCombo);
+
+    QMenu* manageMenu = new QMenu(tr("&Manage"), this);
+    menuBar()->addMenu(manageMenu);
+
+    QAction* actManageRoles = manageMenu->addAction(tr("&Roles..."));
+    connect(actManageRoles, &QAction::triggered, this, &MainWindow::openRoleDialog);
+
+    QAction* actManageDancers = manageMenu->addAction(tr("&Dancers..."));
+    connect(actManageDancers, &QAction::triggered, this, &MainWindow::openDancerDialog);
 }
 
 void MainWindow::newFile() {
@@ -258,6 +588,9 @@ void MainWindow::pdfExport() {
 }
 
 void MainWindow::loadSceneByIndex(int index) {
+    if (index < 0 || index >= static_cast<int>(choreo.scenes.size())) {
+        return;   // nothing valid to load
+    }
     this->editor->scene = &this->choreo.scenes[index];
     this->editor->setText(QString::fromStdString(this->editor->scene->text));
 
@@ -287,6 +620,24 @@ void MainWindow::resetForNewChoreo() {
 
     if (!choreo.scenes.empty()) {
         loadSceneByIndex(0);
+    }
+}
+
+void MainWindow::openRoleDialog() {
+    RoleDialog dialog(&choreo.roles, &choreo.dancers, this);
+    dialog.exec();
+    int row = outline->currentRow();
+    if (editor->scene && row >= 0) {
+        loadSceneByIndex(row);
+    }
+}
+
+void MainWindow::openDancerDialog() {
+    DancerDialog dialog(&choreo.dancers, &choreo.roles, this);
+    dialog.exec();
+    int row = outline->currentRow();
+    if (editor->scene && row >= 0) {
+        loadSceneByIndex(row);
     }
 }
 

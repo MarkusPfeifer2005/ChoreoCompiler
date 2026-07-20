@@ -15,6 +15,7 @@
 #include <qwidget.h>
 #include <string>
 #include <QApplication>
+#include <QStyleHints>
 #include <QWidget>
 #include <QImage>
 #include <QPainter>
@@ -52,6 +53,7 @@ void showHelp() {
 
 int main(int argc, char* argv[]) {
     QApplication app(argc, argv);
+    app.styleHints()->setColorScheme(Qt::ColorScheme::Dark);
     if (argc < 2) {
         MainWindow mainWindow;
         mainWindow.show();

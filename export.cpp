@@ -69,14 +69,13 @@ FloorScene* buildSceneForExport(Scene& scene, Floor& floor, int roleID, bool top
 }
 
 QImage renderSceneToImage(Scene& scene, Floor& floor, int roleID = -1, bool topUp = true) {
-    FloorScene* exportScene = buildSceneForExport(scene, floor, roleID, topUp);
+    std::unique_ptr<FloorScene> exportScene{buildSceneForExport(scene, floor, roleID, topUp)};
     QImage image(exportScene->sceneRect().width(), exportScene->sceneRect().height(), QImage::Format_ARGB32);
     image.fill(Qt::white);
     QPainter painter(&image);
     painter.setRenderHint(QPainter::Antialiasing);
     exportScene->render(&painter);
     painter.end();
-    delete exportScene;
     return image;
 }
 

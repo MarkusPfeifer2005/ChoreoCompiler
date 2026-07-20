@@ -9,8 +9,10 @@
 #include "config.h"
 #include "dance.h"
 #include <QStatusBar>
+#include <memory>
 #include <qaction.h>
 #include <qcontainerfwd.h>
+#include <qdialog.h>
 #include <qgraphicsitem.h>
 #include <qgraphicsview.h>
 #include <qlistwidget.h>
@@ -26,10 +28,59 @@
 #include <QGraphicsView>
 #include <QGraphicsItem>
 #include <QComboBox>
+#include <QDialog>
+#include <QLineEdit>
+#include <QPushButton>
+#include <QSpinBox>
+#include <QComboBox>
+#include <QFormLayout>
+#include <QColorDialog>
+#include <QMessageBox>
 
 double m_to_px(double);
 double xPos_to_px(double);
 double yPos_to_px(double);
+
+class RoleListWidget : public QListWidget {
+    Q_OBJECT
+public:
+    RoleListWidget(std::vector<std::shared_ptr<Role>>*, QWidget* = nullptr);
+    void load();
+private:
+    std::vector<std::shared_ptr<Role>>* roles;
+};
+
+class RoleDialog : public QDialog {
+    Q_OBJECT
+public:
+    RoleDialog(std::vector<std::shared_ptr<Role>>*, std::vector<std::shared_ptr<Dancer>>*, QWidget* = nullptr);
+private:
+    std::vector<std::shared_ptr<Role>>* roles;
+    std::vector<std::shared_ptr<Dancer>>* dancers;
+    RoleListWidget* roleList;
+    QLineEdit* nameEdit;
+    QPushButton* colorButton;
+    QSpinBox* zIndexSpin;
+    QColor currentColor;
+    void showRole(int index);
+    void updateColorButton();
+private slots:
+    void onSelectionChanged();
+    void onNameEdited(const QString&);
+    void onZIndexChanged(int);
+    void onColorClicked();
+    void onAddClicked();
+    void onRemoveClicked();
+};
+
+class DancerListWidget : public QListWidget {
+Q_OBJECT
+public:
+    DancerListWidget(std::vector<std::shared_ptr<Dancer>> *, QWidget* = nullptr);
+    void load();
+private:
+    std::vector<std::shared_ptr<Dancer>> *dancers;
+};
 
 class OutlineWidget : public QListWidget {
     Q_OBJECT
@@ -45,6 +96,32 @@ private slots:
     void onItemMoved(const QModelIndex&, int, int, const QModelIndex&, int);
     void addScene(QListWidgetItem*);
     void removeScene(QListWidgetItem*);
+};
+
+class DancerDialog : public QDialog {
+Q_OBJECT
+public:
+    DancerDialog(std::vector<std::shared_ptr<Dancer>>*, std::vector<std::shared_ptr<Role>>*, QWidget* = nullptr);
+    DancerListWidget *dancerList;
+private:
+    std::vector<std::shared_ptr<Dancer>>* dancers;
+    std::vector<std::shared_ptr<Role>>* roles;
+    QLineEdit* nameEdit;
+    QLineEdit* shortcutEdit;
+    QComboBox* roleCombo;
+    QPushButton* colorButton;
+    QColor currentColor;
+    void showDancer(int index);
+    void updateColorButton();
+    void reloadRoleCombo();
+private slots:
+    void onSelectionChanged();
+    void onNameEdited(const QString&);
+    void onShortcutEdited(const QString&);
+    void onRoleChanged(int);
+    void onColorClicked();
+    void onAddClicked();
+    void onRemoveClicked();
 };
 
 class DefinitionEditor : public QTextEdit {
@@ -133,6 +210,9 @@ private slots:
     void resetForNewChoreo();
     void pdfExport();
     void onGridSizeChanged(int);
+    void openRoleDialog();
+    void openDancerDialog();
 };
+
 
 #endif
