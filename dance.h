@@ -3,6 +3,8 @@
 
 #include "build/_deps/json-src/include/nlohmann/detail/macro_scope.hpp"
 #include "nlohmann/json.hpp"
+#include <memory>
+#include <string>
 
 
 using json = nlohmann::json;
@@ -53,7 +55,9 @@ struct Role {
         zIndex;
     std::string name,
                 color;
-   Role(json);
+    Role(json);
+    Role(std::string name, int id, std::string color, int zIndex) :
+        name(name), id(id), color(color), zIndex(zIndex) {}
 };
 
 void to_json(json&, const Role&);
@@ -67,6 +71,10 @@ public:
                 shortcut,
                 color;
     Dancer(json, std::vector<std::shared_ptr<Role>>&);
+    Dancer(std::string name, int id, std::string shortcut, std::shared_ptr<Role> &role) :
+        name(name), id(id), shortcut(shortcut), role(role) {
+        color = role->color;
+    }
 };
 
 void to_json(json&, const Dancer&);
@@ -78,6 +86,7 @@ public:
     double x,
            y;
     Position(json, std::vector<std::shared_ptr<Dancer>>&);
+    Position(double, double, int, std::vector<std::shared_ptr<Dancer>>&);
 };
 
 void to_json(json&, const Position&);
@@ -88,6 +97,7 @@ struct Scene {
     std::string name,
                 text;
     Scene(json, std::vector<std::shared_ptr<Dancer>>&);
+    Scene(std::vector<std::shared_ptr<Dancer>>&);
     void print();
 };
 
@@ -134,7 +144,7 @@ public:
     std::vector<std::shared_ptr<Dancer>> dancers;
     std::vector<Scene> scenes;
     Choreo(std::string);
-    Choreo() = default;
+    Choreo();
     friend std::ostream& operator<<(std::ostream&, const Choreo&);
 };
 

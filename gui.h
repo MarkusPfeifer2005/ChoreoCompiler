@@ -117,14 +117,18 @@ public:
     CanvasView* canvas = nullptr;
     Choreo choreo;
 private:
+    std::string filePath = "";
     QComboBox* gridSizeCombo = nullptr;
 private slots:
     void newFile();
     void openFile();
     void saveFile();
+    void saveAsFile();
     void loadScene(QListWidgetItem*);
+    void loadSceneByIndex(int);
+    void resetForNewChoreo();
     void pdfExport();
-    void onGridSizeChanged(int index);
+    void onGridSizeChanged(int);
 };
 
 #endif

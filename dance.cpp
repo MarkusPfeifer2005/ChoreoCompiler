@@ -3,6 +3,7 @@
 #include "nlohmann/json.hpp"
 #include <QPainter>
 #include <fstream>
+#include <memory>
 #include <ostream>
 #include <string>
 
@@ -74,6 +75,16 @@ Position::Position(json j, std::vector<std::shared_ptr<Dancer>>& dancers) {
     }
 }
 
+Position::Position(double x, double y, int dancerID, std::vector<std::shared_ptr<Dancer>>& dancers) :
+    x(x), y(y) {
+    for (const auto d: dancers) {
+        if (d->id == dancerID) {
+            this->dancer = d;
+            break;
+        }
+    }
+}
+
 void to_json(json& j, const Position& pos) {
     j = {
         {"Dancer", {{"$ref", std::to_string(pos.dancer->id)}}},
@@ -82,12 +93,29 @@ void to_json(json& j, const Position& pos) {
     };
 }
 
+
 Scene::Scene(json j, std::vector<std::shared_ptr<Dancer>>& dancers) {
     name = j["Name"];
     text = j["Text"];
 
     for (const auto position : j["Positions"]) {
         positions.push_back(Position{position, dancers});
+    }
+}
+
+Scene::Scene(std::vector<std::shared_ptr<Dancer>>& dancers) {
+    name = "New Scene";
+    text = "";
+
+    double xDame = 3.5, xHerr = 3.5;
+    for (auto& dancer : dancers) {
+        if (dancer->role->id == 0) {
+            positions.push_back(Position{xDame, -1., dancer->id, dancers});
+            xDame -= 1.;
+        } else {
+            positions.push_back(Position{xHerr, 1., dancer->id, dancers});
+            xHerr -= 1.;
+        }
     }
 }
 
@@ -135,6 +163,20 @@ Choreo::Choreo(std::string filePath) {
     for (const auto s : data["Scenes"]) {
         scenes.push_back(Scene{s, dancers});
     }
+}
+
+Choreo::Choreo() {
+    floor = Floor();
+    settings = Settings();
+    roles.push_back(std::make_shared<Role>("Dame", 0, "#FFC71585", 0));
+    roles.push_back(std::make_shared<Role>("Herr", 1, "#FF4169E1", 1));
+    for (int i = 1; i <= 8; i++) {
+        char letter = 'A' + (i - 1);
+        std::string letterStr(1, letter);
+        dancers.push_back(std::make_shared<Dancer>(letterStr, i+8, letterStr, roles[0]));
+        dancers.push_back(std::make_shared<Dancer>(std::to_string(i), i, std::to_string(i), roles[1]));
+    }
+    scenes.push_back(Scene{dancers});
 }
 
 std::ostream& operator<<(std::ostream& os, const Choreo& choreo) {

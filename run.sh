@@ -11,7 +11,7 @@ rm coco
 make -j$(nproc)
 if [ $? ]
 then
-    ./coco OneChance.choreo
+    ./coco
 fi
 
 cd ..

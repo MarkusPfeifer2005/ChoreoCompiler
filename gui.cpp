@@ -123,6 +123,11 @@ QMainWindow(parent, flags) {
     actSaveFile->setStatusTip(tr("Saves the currently opened file."));
     connect(actSaveFile, &QAction::triggered, this, &MainWindow::saveFile);
 
+    QAction* actSaveAsFile = fileMenu->addAction(tr("&Save As"));
+    actSaveAsFile->setShortcut(QKeySequence(tr("Ctrl+Shift+S", "File|Save As")));
+    actSaveAsFile->setStatusTip(tr("Saves the currently opened file."));
+    connect(actSaveAsFile, &QAction::triggered, this, &MainWindow::saveAsFile);
+
     QAction* actPdfExport = fileMenu->addAction(tr("&Export"));
     actPdfExport->setShortcut(QKeySequence(tr("Ctrl+E", "File|Export")));
     actPdfExport->setStatusTip(tr("Exports the choreo to PDF."));
@@ -143,7 +148,11 @@ QMainWindow(parent, flags) {
 }
 
 void MainWindow::newFile() {
-    //editor->clear();
+    choreo = Choreo();
+    filePath = "";
+
+    resetForNewChoreo();
+    statusBar()->showMessage(tr("New file created."));
 }
 
 void MainWindow::onGridSizeChanged(int index) {
@@ -161,13 +170,14 @@ void MainWindow::openFile() {
         statusBar()->showMessage(tr("No file loaded!"));
         return;
     }
-    this->choreo = Choreo{fileName.toStdString()};
-    statusBar()->showMessage(tr("File '%1' loaded.").arg(fileName));
+    filePath = fileName.toStdString();
+    this->choreo = Choreo{filePath};
 
-    outline->load(choreo.scenes);
+    resetForNewChoreo();
+    statusBar()->showMessage(tr("File '%1' loaded.").arg(fileName));
 }
 
-void MainWindow::saveFile() {
+void MainWindow::saveAsFile() {
     QString fileName = QFileDialog::getSaveFileName(
         this,
         tr("Save File"),
@@ -178,9 +188,19 @@ void MainWindow::saveFile() {
         statusBar()->showMessage(tr("No file saved!"));
         return;
     }
-    std::ofstream file{fileName.toStdString()};
+    filePath = fileName.toStdString();
+    saveFile();
+}
+
+void MainWindow::saveFile() {
+    if (filePath.empty()) {
+        saveAsFile();
+        return;
+    }
+    std::ofstream file{filePath};
     file << std::setw(4) << choreo << "\n";
     file.close();
+    statusBar()->showMessage(tr("File saved to '%1'.").arg(QString::fromStdString(filePath)));
 }
 
 void MainWindow::pdfExport() {
@@ -190,6 +210,7 @@ void MainWindow::pdfExport() {
         "",
         tr("PDF files (*.pdf)")
     );
+
     if (fileName.isEmpty()) {
         statusBar()->showMessage(tr("No file exported!"));
         return;
@@ -197,16 +218,7 @@ void MainWindow::pdfExport() {
     generatePDF(this->choreo, fileName.toStdString(), false);
 }
 
-DefinitionEditor::DefinitionEditor(QWidget* parent): QTextEdit(parent) {
-    connect(this, &DefinitionEditor::textChanged, this, &DefinitionEditor::save);
-}
-
-void DefinitionEditor::save() {
-    this->scene->text = this->toPlainText().toStdString();
-}
-
-void MainWindow::loadScene(QListWidgetItem *item) {
-    int index = item->data(Qt::UserRole).toInt();
+void MainWindow::loadSceneByIndex(int index) {
     this->editor->scene = &this->choreo.scenes[index];
     this->editor->setText(QString::fromStdString(this->editor->scene->text));
 
@@ -221,6 +233,33 @@ void MainWindow::loadScene(QListWidgetItem *item) {
     }
     floorScene->update();
 }
+
+void MainWindow::loadScene(QListWidgetItem *item) {
+    int index = item->data(Qt::UserRole).toInt();
+    loadSceneByIndex(index);
+}
+
+void MainWindow::resetForNewChoreo() {
+
+    floorScene->clear();
+    floorScene->positions.clear();
+
+    outline->load(choreo.scenes);
+
+    if (!choreo.scenes.empty()) {
+        loadSceneByIndex(0);
+    }
+}
+
+// Definition Editor
+DefinitionEditor::DefinitionEditor(QWidget* parent): QTextEdit(parent) {
+    connect(this, &DefinitionEditor::textChanged, this, &DefinitionEditor::save);
+}
+
+void DefinitionEditor::save() {
+    this->scene->text = this->toPlainText().toStdString();
+}
+
 
 FloorScene::FloorScene(Floor* floor, QObject* parent) : QGraphicsScene(parent), floor(floor) {
     setSceneRect(0, 0, getImWidth(), getImHeight());
@@ -277,11 +316,11 @@ void FloorScene::drawForeground(QPainter* painter, const QRectF&) {
     for (Position* position : positions) {
         double x, y;
         if (topUp) {
-            y = yPos_to_px(floor->SizeBack + position->y);
-            x = xPos_to_px(floor->SizeLeft - position->x);
-        } else {
             y = yPos_to_px(floor->SizeBack - position->y);
             x = xPos_to_px(floor->SizeLeft + position->x);
+        } else {
+            y = yPos_to_px(floor->SizeBack + position->y);
+            x = xPos_to_px(floor->SizeLeft - position->x);
         }
 
         if (position->y != 0) {
@@ -412,11 +451,11 @@ QVariant PositionItem::itemChange(GraphicsItemChange change, const QVariant& val
         double xMeter = (p.x() - BORDER) / PX_M;
         double yMeter = (p.y() - BORDER) / PX_M;
         if (*topUp) {
-            position->x = floor->SizeLeft - xMeter;
-            position->y = yMeter - floor->SizeBack;
-        } else {
             position->x = xMeter - floor->SizeLeft;
             position->y = floor->SizeBack - yMeter;
+        } else {
+            position->x = floor->SizeLeft - xMeter;
+            position->y = yMeter - floor->SizeBack;
         }
         if (scene()) scene()->update();
     }

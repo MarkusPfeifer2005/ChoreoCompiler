@@ -2,6 +2,9 @@
 
 
 std::string toGermanDate(const std::string& isoDate) {
+    if (isoDate.size() < 10) {
+        return "unbekannt";
+    }
     // Extract YYYY-MM-DD
     std::string year = isoDate.substr(0, 4);
     std::string month = isoDate.substr(5, 2);
