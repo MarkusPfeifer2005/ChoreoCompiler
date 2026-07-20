@@ -34,13 +34,17 @@ double yPos_to_px(double);
 class OutlineWidget : public QListWidget {
     Q_OBJECT
 public:
-    std::vector<Scene> &scenes;
+    std::vector<Scene> *scenes;
     OutlineWidget(std::vector<Scene>&, QWidget* = nullptr);
     void load();
     void load(std::vector<Scene>&);
+protected:
+    void contextMenuEvent(QContextMenuEvent*) override;
 private slots:
-    void onItemRenamed(QListWidgetItem* item);
+    void onItemRenamed(QListWidgetItem*);
     void onItemMoved(const QModelIndex&, int, int, const QModelIndex&, int);
+    void addScene(QListWidgetItem*);
+    void removeScene(QListWidgetItem*);
 };
 
 class DefinitionEditor : public QTextEdit {

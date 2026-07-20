@@ -6,6 +6,7 @@
 #include <memory>
 #include <ostream>
 #include <string>
+#include <vector>
 
 
 using json = nlohmann::json;
@@ -14,7 +15,6 @@ using json = nlohmann::json;
 Floor::Floor(json j) {
     j.get_to(*this);
 }
-
 
 
 Role::Role(json j) {
@@ -117,6 +117,12 @@ Scene::Scene(std::vector<std::shared_ptr<Dancer>>& dancers) {
             xHerr -= 1.;
         }
     }
+}
+
+Scene::Scene(const Scene &original) {
+    name = original.name;
+    text = original.text;
+    positions = std::vector<Position>(original.positions);
 }
 
 void Scene::print() {

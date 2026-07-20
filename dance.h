@@ -98,6 +98,7 @@ struct Scene {
                 text;
     Scene(json, std::vector<std::shared_ptr<Dancer>>&);
     Scene(std::vector<std::shared_ptr<Dancer>>&);
+    Scene(const Scene&);
     void print();
 };
 

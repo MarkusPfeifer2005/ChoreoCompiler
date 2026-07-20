@@ -4,6 +4,7 @@
 #include "utils.h"
 #include <fstream>
 #include <qaction.h>
+#include <qapplication.h>
 #include <qcoreapplication.h>
 #include <qdockwidget.h>
 #include <qgraphicsscene.h>
@@ -26,6 +27,7 @@
 #include <vector>
 #include <QToolBar>
 #include "export.h"
+#include <QContextMenuEvent>
 
 double m_to_px(double meter) {return meter*PX_M;}
 
@@ -35,7 +37,7 @@ double yPos_to_px(double meter) {return BORDER + meter*PX_M;}
 
 // Document Outline
 OutlineWidget::OutlineWidget(std::vector<Scene>& scenes, QWidget* parent):
-QListWidget(parent), scenes(scenes) {
+QListWidget(parent), scenes(&scenes) {
     this->setEditTriggers(QAbstractItemView::DoubleClicked);
     this->setDragDropMode(QAbstractItemView::InternalMove);
     connect(this, &QListWidget::itemChanged, this, &OutlineWidget::onItemRenamed);
@@ -44,8 +46,8 @@ QListWidget(parent), scenes(scenes) {
 
 void OutlineWidget::load() {
     clear();
-    for (int i = 0; i < this->scenes.size(); i++) {
-        QListWidgetItem* item = new QListWidgetItem(QString::fromStdString(scenes[i].name));
+    for (int i = 0; i < this->scenes->size(); i++) {
+        QListWidgetItem* item = new QListWidgetItem(QString::fromStdString((*scenes)[i].name));
         item->setFlags(item->flags() | Qt::ItemIsEditable);
         item->setData(Qt::UserRole, i);
         this->addItem(item);
@@ -53,14 +55,14 @@ void OutlineWidget::load() {
 }
 
 void OutlineWidget::load(std::vector<Scene> &scenes) {
-    this->scenes = scenes;
+    this->scenes = &scenes;
     load();
 }
 
 void OutlineWidget::onItemRenamed(QListWidgetItem* item) {
     int index = row(item);
-    if (index >= 0 && index < scenes.size()) {
-        scenes[index].name = item->text().toStdString();
+    if (index >= 0 && index < scenes->size()) {
+        scenes->at(index).name = item->text().toStdString();
     }
 }
 
@@ -68,12 +70,49 @@ void OutlineWidget::onItemMoved(const QModelIndex&, int, int, const QModelIndex&
     std::vector<Scene> newScenes;
     for (int i = 0; i < count(); i++) {
         int oldIndex = item(i)->data(Qt::UserRole).toInt();
-        newScenes.push_back(scenes[oldIndex]);
+        newScenes.push_back(scenes->at(oldIndex));
     }
-    scenes = newScenes;
+    *scenes = std::move(newScenes);
     for (int i = 0; i < count(); i++) {
         item(i)->setData(Qt::UserRole, i);
     }
+}
+
+void OutlineWidget::contextMenuEvent(QContextMenuEvent *event) {
+    QListWidgetItem *item = itemAt(event->pos());
+
+    if (!item)
+        return; // right-clicked empty space
+
+    QMenu menu(this);
+
+    QAction *addAction = menu.addAction("Add Scene");
+    QAction *removeAction = menu.addAction("Remove Scene");
+
+    QAction *chosen = menu.exec(event->globalPos());
+
+    if (chosen == addAction)
+        addScene(item);
+    else if (chosen == removeAction)
+        removeScene(item);
+}
+
+void OutlineWidget::addScene(QListWidgetItem* item) {
+    int idx = row(item);
+    if (idx < 0 || idx >= static_cast<int>(scenes->size())) {
+        throw std::out_of_range("addScene: index out of range");
+    }
+    scenes->insert(scenes->begin()+idx, Scene(scenes->at(idx)));
+    load();
+}
+
+void OutlineWidget::removeScene(QListWidgetItem* item) {
+    int idx = row(item);
+    if (idx < 0 || idx >= static_cast<int>(scenes->size())) {
+        throw std::out_of_range("addScene: index out of range");
+    }
+    scenes->erase(scenes->begin()+idx);
+    load();
 }
 
 // Main Window
