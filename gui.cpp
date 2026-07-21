@@ -543,12 +543,40 @@ QMainWindow(parent, flags) {
     QToolBar* toolEdit = addToolBar(tr("Edit"));
     toolEdit->addAction(actUndo);
     toolEdit->addAction(actRedo);
+
+    positionStatusWidget = new QWidget(this);
+    QHBoxLayout* posLayout = new QHBoxLayout(positionStatusWidget);
+    posLayout->setContentsMargins(0, 0, 0, 0);
+
+    positionNameLabel = new QLabel(positionStatusWidget);
+    posLayout->addWidget(positionNameLabel);
+
+    posLayout->addWidget(new QLabel(tr("X:"), positionStatusWidget));
+    xSpin = new QDoubleSpinBox(positionStatusWidget);
+    xSpin->setDecimals(3);
+    xSpin->setSingleStep(0.05);
+    xSpin->setRange(-static_cast<double>(choreo.floor.SizeLeft), static_cast<double>(choreo.floor.SizeRight));
+    posLayout->addWidget(xSpin);
+
+    posLayout->addWidget(new QLabel(tr("Y:"), positionStatusWidget));
+    ySpin = new QDoubleSpinBox(positionStatusWidget);
+    ySpin->setDecimals(3);
+    ySpin->setSingleStep(0.05);
+    ySpin->setRange(-static_cast<double>(choreo.floor.SizeBack), choreo.floor.SizeFront);
+    posLayout->addWidget(ySpin);
+
+    statusBar()->addPermanentWidget(positionStatusWidget);
+    positionStatusWidget->hide();   // nothing selected at startup
+
+    connect(floorScene, &QGraphicsScene::selectionChanged, this, &MainWindow::onCanvasSelectionChanged);
+    connect(floorScene, &FloorScene::positionMoved, this, &MainWindow::onPositionMoved);
+    connect(xSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &MainWindow::onManualXChanged);
+    connect(ySpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &MainWindow::onManualYChanged);
 }
 
 void MainWindow::newFile() {
     choreo = Choreo();
     filePath = "";
-
     resetForNewChoreo();
     statusBar()->showMessage(tr("New file created."));
 }
@@ -623,6 +651,8 @@ void MainWindow::loadSceneByIndex(int index) {
     this->editor->scene = &this->choreo.scenes[index];
     this->editor->setText(QString::fromStdString(this->editor->scene->text));
 
+    selectedPositionItem = nullptr;
+    positionStatusWidget->hide();
     undoStack->clear();
     this->floorScene->clear();
     this->floorScene->positions.clear();
@@ -631,6 +661,7 @@ void MainWindow::loadSceneByIndex(int index) {
                 &floorScene->topUp, &floorScene->dragging, &floorScene->gridSize);
         posItem->updatePos();
         posItem->setZValue(pos.dancer->role->zIndex);
+        //connect(posItem, &PositionItem::itemChange::ItemPositionHasChanged, this, &MainWindow::onCanvasSelectionChanged) // ???
         this->floorScene->addItem(posItem);
         this->floorScene->positions.push_back(&pos);
     }
@@ -652,6 +683,8 @@ void MainWindow::resetForNewChoreo() {
     if (!choreo.scenes.empty()) {
         loadSceneByIndex(0);
     }
+    xSpin->setRange(-static_cast<double>(choreo.floor.SizeLeft), static_cast<double>(choreo.floor.SizeRight));
+    ySpin->setRange(-static_cast<double>(choreo.floor.SizeBack), static_cast<double>(choreo.floor.SizeFront));
 }
 
 void MainWindow::openRoleDialog() {
@@ -670,6 +703,59 @@ void MainWindow::openDancerDialog() {
     if (editor->scene && row >= 0) {
         loadSceneByIndex(row);
     }
+}
+
+void MainWindow::onCanvasSelectionChanged() {
+    QList<QGraphicsItem*> selected = floorScene->selectedItems();
+    PositionItem* found = nullptr;
+    int selectedItemsCount = 0;
+    for (QGraphicsItem* item : selected) {
+        if (auto* posItem = dynamic_cast<PositionItem*>(item)) {
+            found = posItem;
+            selectedItemsCount++;
+        }
+    }
+
+    if (selectedItemsCount == 1 && found) {
+        selectedPositionItem = found;
+        Dancer* dancer = found->getDancer();
+        Position* pos = found->getPosition();
+
+        positionNameLabel->setText(QString::fromStdString(dancer->name) + " (" +
+                                    QString::fromStdString(dancer->role->name) + ")");
+
+        xSpin->blockSignals(true);
+        ySpin->blockSignals(true);
+        xSpin->setValue(pos->x);
+        ySpin->setValue(pos->y);
+        xSpin->blockSignals(false);
+        ySpin->blockSignals(false);
+
+        positionStatusWidget->show();
+    } else {
+        selectedPositionItem = nullptr;
+        positionStatusWidget->hide();
+    }
+}
+
+void MainWindow::onManualXChanged(double value) {
+    if (selectedPositionItem) selectedPositionItem->setExactX(value);
+}
+
+void MainWindow::onManualYChanged(double value) {
+    if (selectedPositionItem) selectedPositionItem->setExactY(value);
+}
+
+void MainWindow::onPositionMoved(PositionItem* item) {
+    if (item != selectedPositionItem) return;   // ignore drags on items not currently shown
+
+    Position* pos = item->getPosition();
+    xSpin->blockSignals(true);
+    ySpin->blockSignals(true);
+    xSpin->setValue(pos->x);
+    ySpin->setValue(pos->y);
+    xSpin->blockSignals(false);
+    ySpin->blockSignals(false);
 }
 
 // Definition Editor
@@ -821,6 +907,18 @@ void PositionItem::paint(QPainter* painter, const QStyleOptionGraphicsItem *styl
     }
 }
 
+void PositionItem::setExactX(double meters) {
+    position->x = meters;
+    updatePos();
+    if (scene()) scene()->update();
+}
+
+void PositionItem::setExactY(double meters) {
+    position->y = meters;
+    updatePos();
+    if (scene()) scene()->update();
+}
+
 void FloorScene::mousePressEvent(QGraphicsSceneMouseEvent* event) {
     QGraphicsScene::mousePressEvent(event);   // let Qt resolve the click/selection first
     dragging = true;
@@ -900,6 +998,9 @@ QVariant PositionItem::itemChange(GraphicsItemChange change, const QVariant& val
         } else {
             position->x = floor->SizeLeft - xMeter;
             position->y = yMeter - floor->SizeBack;
+        }
+        if (auto* fs = dynamic_cast<FloorScene*>(scene())) {
+            emit fs->positionMoved(this);
         }
         if (scene()) scene()->update();
     }

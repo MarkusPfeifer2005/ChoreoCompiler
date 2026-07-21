@@ -40,6 +40,8 @@
 #include <QUndoStack>
 #include <QUndoCommand>
 #include <QMap>
+#include <QLabel>
+#include <QDoubleSpinBox>
 
 double m_to_px(double);
 double xPos_to_px(double);
@@ -153,6 +155,10 @@ public:
     QRectF boundingRect() const override;
     void paint(QPainter*, const QStyleOptionGraphicsItem*, QWidget*) override;
     void updatePos();
+    void setExactX(double meters);
+    void setExactY(double meters);
+    Dancer* getDancer() const {return dancer;}
+    Position* getPosition() const {return position;}
     static int diameter;
     static void drawDancerBody(QPainter*, Dancer*, int=0, int=0);
 protected:
@@ -188,6 +194,8 @@ public:
     double gridSize = .5;
     std::vector<Position*> positions;
     QUndoStack* undoStack = nullptr;
+signals:
+    void positionMoved(PositionItem*);
 protected:
     void drawBackground(QPainter* painter, const QRectF& rect) override;
     void drawForeground(QPainter* painter, const QRectF& rect) override;
@@ -218,6 +226,11 @@ private:
     std::string filePath = "";
     QComboBox* gridSizeCombo = nullptr;
     QUndoStack* undoStack = nullptr;
+    QWidget* positionStatusWidget = nullptr;
+    QLabel* positionNameLabel = nullptr;
+    QDoubleSpinBox* xSpin = nullptr;
+    QDoubleSpinBox* ySpin = nullptr;
+    PositionItem* selectedPositionItem = nullptr;
 private slots:
     void newFile();
     void openFile();
@@ -230,6 +243,10 @@ private slots:
     void onGridSizeChanged(int);
     void openRoleDialog();
     void openDancerDialog();
+    void onCanvasSelectionChanged();
+    void onManualXChanged(double);
+    void onManualYChanged(double);
+    void onPositionMoved(PositionItem*);
 };
 
 
