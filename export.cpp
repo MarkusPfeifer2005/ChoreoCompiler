@@ -53,7 +53,7 @@
 namespace fs = std::filesystem;
 
 FloorScene* buildSceneForExport(Scene& scene, Floor& floor, int roleID, bool topUp) {
-    FloorScene* exportScene = new FloorScene(&floor);
+    FloorScene* exportScene = new FloorScene(&floor, nullptr);
     exportScene->topUp = topUp;
     for (auto& pos : scene.positions) {
         PositionItem* item = new PositionItem(&pos, &floor, pos.dancer.get(), &exportScene->topUp,

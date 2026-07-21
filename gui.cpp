@@ -23,6 +23,7 @@
 #include <qstyleoption.h>
 #include <qtextedit.h>
 #include <QListWidget>
+#include <qundostack.h>
 #include <qwidget.h>
 #include <vector>
 #include <QToolBar>
@@ -36,6 +37,12 @@ double xPos_to_px(double meter) {return BORDER + meter*PX_M;}
 
 double yPos_to_px(double meter) {return BORDER + meter*PX_M;}
 
+
+MovePositionCommand::MovePositionCommand(PositionItem* item, QPointF oldPos, QPointF newPos)
+    : item(item), oldPos(oldPos), newPos(newPos) {}
+
+void MovePositionCommand::undo() { item->setPos(oldPos); }
+void MovePositionCommand::redo() { item->setPos(newPos); }
 
 // --- RoleListWidget ---
 
@@ -441,7 +448,8 @@ MainWindow::MainWindow(QMainWindow* parent, Qt::WindowFlags flags):
 QMainWindow(parent, flags) {
     setWindowTitle("CoCo");
 
-    floorScene = new FloorScene(&this->choreo.floor, this);
+    undoStack = new QUndoStack(this);
+    floorScene = new FloorScene(&this->choreo.floor, undoStack, this);
     canvas = new CanvasView(floorScene, this);
     setCentralWidget(canvas);
     canvas->setRenderHint(QPainter::Antialiasing);
@@ -514,6 +522,27 @@ QMainWindow(parent, flags) {
 
     QAction* actManageDancers = manageMenu->addAction(tr("&Dancers..."));
     connect(actManageDancers, &QAction::triggered, this, &MainWindow::openDancerDialog);
+
+    QMenu* editMenu = new QMenu(tr("&Edit"), this);
+        menuBar()->addMenu(editMenu);
+
+    QAction* actUndo = undoStack->createUndoAction(this, tr("&Undo"));
+    actUndo->setShortcut(QKeySequence::Undo);
+    QIcon undoIcon = QIcon::fromTheme("edit-undo");
+    if (undoIcon.isNull()) undoIcon = QApplication::style()->standardIcon(QStyle::SP_ArrowBack);
+    actUndo->setIcon(undoIcon);
+    editMenu->addAction(actUndo);
+
+    QAction* actRedo = undoStack->createRedoAction(this, tr("&Redo"));
+    actRedo->setShortcut(QKeySequence::Redo);
+    QIcon redoIcon = QIcon::fromTheme("edit-redo");
+    if (redoIcon.isNull()) redoIcon = QApplication::style()->standardIcon(QStyle::SP_ArrowForward);
+    actRedo->setIcon(redoIcon);
+    editMenu->addAction(actRedo);
+
+    QToolBar* toolEdit = addToolBar(tr("Edit"));
+    toolEdit->addAction(actUndo);
+    toolEdit->addAction(actRedo);
 }
 
 void MainWindow::newFile() {
@@ -594,12 +623,14 @@ void MainWindow::loadSceneByIndex(int index) {
     this->editor->scene = &this->choreo.scenes[index];
     this->editor->setText(QString::fromStdString(this->editor->scene->text));
 
+    undoStack->clear();
     this->floorScene->clear();
     this->floorScene->positions.clear();
     for (auto& pos : this->editor->scene->positions) {
         PositionItem* posItem = new PositionItem(&pos, &choreo.floor, pos.dancer.get(),
                 &floorScene->topUp, &floorScene->dragging, &floorScene->gridSize);
         posItem->updatePos();
+        posItem->setZValue(pos.dancer->role->zIndex);
         this->floorScene->addItem(posItem);
         this->floorScene->positions.push_back(&pos);
     }
@@ -612,7 +643,7 @@ void MainWindow::loadScene(QListWidgetItem *item) {
 }
 
 void MainWindow::resetForNewChoreo() {
-
+    undoStack->clear();
     floorScene->clear();
     floorScene->positions.clear();
 
@@ -651,7 +682,7 @@ void DefinitionEditor::save() {
 }
 
 
-FloorScene::FloorScene(Floor* floor, QObject* parent) : QGraphicsScene(parent), floor(floor) {
+FloorScene::FloorScene(Floor* floor,QUndoStack* undoStack, QObject* parent) : QGraphicsScene(parent), floor(floor), undoStack(undoStack) {
     setSceneRect(0, 0, getImWidth(), getImHeight());
 }
 
@@ -791,13 +822,36 @@ void PositionItem::paint(QPainter* painter, const QStyleOptionGraphicsItem *styl
 }
 
 void FloorScene::mousePressEvent(QGraphicsSceneMouseEvent* event) {
+    QGraphicsScene::mousePressEvent(event);   // let Qt resolve the click/selection first
     dragging = true;
-    QGraphicsScene::mousePressEvent(event);
+    dragStartPositions.clear();
+    for (QGraphicsItem* item : selectedItems()) {
+        if (auto* posItem = dynamic_cast<PositionItem*>(item)) {
+            dragStartPositions[posItem] = posItem->pos();
+        }
+    }
 }
 
 void FloorScene::mouseReleaseEvent(QGraphicsSceneMouseEvent* event) {
-    dragging = false;
     QGraphicsScene::mouseReleaseEvent(event);
+    dragging = false;
+
+    if (undoStack && !dragStartPositions.isEmpty()) {
+        bool anyMoved = false;
+        for (auto it = dragStartPositions.begin(); it != dragStartPositions.end(); ++it) {
+            if (it.value() != it.key()->pos()) { anyMoved = true; break; }
+        }
+        if (anyMoved) {
+            undoStack->beginMacro(tr("Move dancers"));
+            for (auto it = dragStartPositions.begin(); it != dragStartPositions.end(); ++it) {
+                if (it.value() != it.key()->pos()) {
+                    undoStack->push(new MovePositionCommand(it.key(), it.value(), it.key()->pos()));
+                }
+            }
+            undoStack->endMacro();
+        }
+    }
+    dragStartPositions.clear();
 }
 
 void PositionItem::updatePos() {

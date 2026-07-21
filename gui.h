@@ -23,6 +23,7 @@
 #include <qstyleoption.h>
 #include <qtextedit.h>
 #include <qtmetamacros.h>
+#include <qundostack.h>
 #include <qwidget.h>
 #include <vector>
 #include <QGraphicsView>
@@ -36,6 +37,9 @@
 #include <QFormLayout>
 #include <QColorDialog>
 #include <QMessageBox>
+#include <QUndoStack>
+#include <QUndoCommand>
+#include <QMap>
 
 double m_to_px(double);
 double xPos_to_px(double);
@@ -143,29 +147,6 @@ protected:
 };
 
 
-class FloorScene : public QGraphicsScene {
-    Q_OBJECT
-public:
-    FloorScene(Floor*, QObject* = nullptr);
-    void setXYOffset(int, int);
-    bool topUp = false;
-    bool dragging = false;
-    double gridSize = .5;
-    std::vector<Position*> positions;
-protected:
-    void drawBackground(QPainter* painter, const QRectF& rect) override;
-    void drawForeground(QPainter* painter, const QRectF& rect) override;
-    void mousePressEvent(QGraphicsSceneMouseEvent* event) override;
-    void mouseReleaseEvent(QGraphicsSceneMouseEvent* event) override;
-private:
-    Floor* floor = nullptr;
-    unsigned int getImWidth() const {return PX_M * floor->getWidth() + 2*BORDER;}
-    unsigned int getImHeight() const {return PX_M * floor->getHeight() + 2*BORDER;}
-    void drawTopLabel(QPainter*, QString) const;
-    void drawBottomLabel(QPainter*, QString) const;
-};
-
-
 class PositionItem : public QGraphicsItem {
 public:
     PositionItem(Position*, Floor*, Dancer*, bool*, bool*, double*);
@@ -186,6 +167,42 @@ private:
 };
 
 
+class MovePositionCommand : public QUndoCommand {
+public:
+    MovePositionCommand(PositionItem* item, QPointF oldPos, QPointF newPos);
+    void undo() override;
+    void redo() override;
+private:
+    PositionItem* item;
+    QPointF oldPos, newPos;
+};
+
+
+class FloorScene : public QGraphicsScene {
+    Q_OBJECT
+public:
+    FloorScene(Floor*, QUndoStack*, QObject* = nullptr);
+    void setXYOffset(int, int);
+    bool topUp = false;
+    bool dragging = false;
+    double gridSize = .5;
+    std::vector<Position*> positions;
+    QUndoStack* undoStack = nullptr;
+protected:
+    void drawBackground(QPainter* painter, const QRectF& rect) override;
+    void drawForeground(QPainter* painter, const QRectF& rect) override;
+    void mousePressEvent(QGraphicsSceneMouseEvent* event) override;
+    void mouseReleaseEvent(QGraphicsSceneMouseEvent* event) override;
+private:
+    Floor* floor = nullptr;
+    QMap<PositionItem*, QPointF> dragStartPositions;
+    unsigned int getImWidth() const {return PX_M * floor->getWidth() + 2*BORDER;}
+    unsigned int getImHeight() const {return PX_M * floor->getHeight() + 2*BORDER;}
+    void drawTopLabel(QPainter*, QString) const;
+    void drawBottomLabel(QPainter*, QString) const;
+};
+
+
 class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
@@ -200,6 +217,7 @@ public:
 private:
     std::string filePath = "";
     QComboBox* gridSizeCombo = nullptr;
+    QUndoStack* undoStack = nullptr;
 private slots:
     void newFile();
     void openFile();
