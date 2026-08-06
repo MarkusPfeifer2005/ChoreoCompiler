@@ -506,9 +506,12 @@ QMainWindow(parent, flags) {
     gridSizeCombo->addItem(tr("Coarse (1 m)"), 1.0);
     gridSizeCombo->addItem(tr("Medium (0.5 m)"), 0.5);
     gridSizeCombo->addItem(tr("Fine (0.25 m)"), 0.25);
-    gridSizeCombo->setCurrentIndex(3);   // matches FloorScene's default of 0.25
-    connect(gridSizeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+    int defaultIndex = 3;
+    gridSizeCombo->setCurrentIndex(defaultIndex);
+    connect(gridSizeCombo,
+            QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &MainWindow::onGridSizeChanged);
+    emit onGridSizeChanged(defaultIndex);
 
     QToolBar* toolFile = addToolBar(tr("File"));
     toolFile->addAction(actSaveFile);
