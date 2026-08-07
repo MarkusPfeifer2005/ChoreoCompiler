@@ -171,6 +171,7 @@ class PositionItem : public QGraphicsItem {
 
    protected:
     QVariant itemChange(GraphicsItemChange change, const QVariant& value) override;
+    void contextMenuEvent(QGraphicsSceneContextMenuEvent*) override;
 
    private:
     Floor* floor = nullptr;
@@ -195,7 +196,7 @@ class MovePositionCommand : public QUndoCommand {
 class SceneEditor : public QGraphicsScene {
     Q_OBJECT
    public:
-    SceneEditor(Floor*, QUndoStack*, QObject* = nullptr);
+    SceneEditor(Floor*, std::vector<std::shared_ptr<Dancer>>*, QUndoStack*, QObject* = nullptr);
     void setXYOffset(int, int);
     bool topUp = false;
     bool dragging = false;
@@ -203,17 +204,21 @@ class SceneEditor : public QGraphicsScene {
     void clear();
     std::vector<Position*> positions;
     void load(Scene*);
+    std::vector<std::shared_ptr<Dancer>> *dancers = nullptr;
    signals:
     void positionMoved(PositionItem*);
     void singlePositionSelected(QString, double, double);
     void selectionCleared();
     void updateCoordinateStatus(double, double);
+    void removePosition(PositionItem*);
+    void addPositionRequested(Dancer*, double, double);
 
    protected:
     void drawBackground(QPainter* painter, const QRectF& rect) override;
     void drawForeground(QPainter* painter, const QRectF& rect) override;
     void mousePressEvent(QGraphicsSceneMouseEvent* event) override;
     void mouseReleaseEvent(QGraphicsSceneMouseEvent* event) override;
+    void contextMenuEvent(QGraphicsSceneContextMenuEvent*) override;
 
    private:
     Floor* floor = nullptr;
@@ -265,6 +270,8 @@ class MainWindow : public QMainWindow {
     void onSinglePositionSelected(QString, double, double);
     void onSelectionCleared();
     void onUpdateCoordinateStatus(double, double);
+    void onRemovePosition(PositionItem*);
+    void addPosition(Dancer*, double, double);
 };
 
 #endif

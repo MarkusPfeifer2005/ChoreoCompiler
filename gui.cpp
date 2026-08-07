@@ -3,6 +3,7 @@
 #include <qcoreapplication.h>
 #include <qdockwidget.h>
 #include <qgraphicsscene.h>
+#include <qgraphicssceneevent.h>
 #include <qgraphicsview.h>
 #include <qkeysequence.h>
 #include <qlistwidget.h>
@@ -23,6 +24,7 @@
 #include <QString>
 #include <QStyle>
 #include <QToolBar>
+#include <QGraphicsSceneContextMenuEvent>
 #include <algorithm>  // std::max
 #include <fstream>
 #include <memory>
@@ -460,8 +462,11 @@ MainWindow::MainWindow(QMainWindow* parent, Qt::WindowFlags flags) : QMainWindow
     setWindowTitle("CoCo");
 
     undoStack = new QUndoStack(this);
-    sceneEditor = new SceneEditor(&this->choreo.floor, undoStack, this);
+    sceneEditor = new SceneEditor(&this->choreo.floor, &this->choreo.dancers, undoStack, this);
     rGraphicsView = new ResizableQGraphicsView(sceneEditor, this);
+    connect(sceneEditor, &SceneEditor::removePosition,
+            this, &MainWindow::onRemovePosition);
+    connect(sceneEditor, &SceneEditor::addPositionRequested, this, &MainWindow::addPosition);
     setCentralWidget(rGraphicsView);
 
     editor = new DefinitionEditor;
@@ -598,6 +603,73 @@ void MainWindow::newFile() {
     statusBar()->showMessage(tr("New file created."));
 }
 
+void PositionItem::contextMenuEvent(QGraphicsSceneContextMenuEvent *event) {
+    if (scene()) {
+        scene()->clearSelection();
+    }
+    setSelected(true);
+
+    QMenu menu;
+    QAction *removeAction = menu.addAction("remove");
+    QAction *chosen = menu.exec(event->screenPos());
+    if (chosen ==  removeAction) {
+        if (auto *editor = qobject_cast<SceneEditor*>(scene())) {
+            emit editor->removePosition(this);
+        }
+    }
+}
+
+void SceneEditor::contextMenuEvent(QGraphicsSceneContextMenuEvent *event) {
+    QGraphicsScene::contextMenuEvent(event);
+    if (event->isAccepted()) return;
+
+    if (!dancers) return;
+    QPointF scenePos = event->scenePos();
+    double xMeter = (scenePos.x() - BORDER) / PX_M;
+    double yMeter = (scenePos.y() - BORDER) / PX_M;
+
+    if (gridSize > 0) {
+        xMeter = std::round(xMeter / gridSize) * gridSize;
+        yMeter = std::round(yMeter / gridSize) * gridSize;
+    }
+    xMeter = std::clamp(xMeter, 0.0, static_cast<double>(floor->getWidth()));
+    yMeter = std::clamp(yMeter, 0.0, static_cast<double>(floor->getHeight()));
+
+    double posX, posY;  // Position-space meters, i.e. what Position::x/y actually store
+    if (topUp) {
+        posX = xMeter - floor->SizeLeft;
+        posY = floor->SizeBack - yMeter;
+    } else {
+        posX = floor->SizeLeft - xMeter;
+        posY = yMeter - floor->SizeBack;
+    }
+
+    QMenu menu;
+    QMenu *addMenu = menu.addMenu("add position");
+    for (auto &dancer : *dancers) {
+        if (std::any_of(positions.begin(), positions.end(),
+                    [&](auto pos){return dancer->id == pos->dancer->id;})) {
+            continue;
+        }
+        QAction *action = addMenu->addAction(QString::fromStdString(dancer->name));
+        connect(action, &QAction::triggered, this, [this, dancer, posX, posY]() {
+            emit addPositionRequested(dancer.get(), posX, posY);
+        });
+    }
+    menu.exec(event->screenPos());
+}
+
+void MainWindow::onRemovePosition(PositionItem *posItem) {
+    Scene *currentScene = editor->scene;
+    Position *position = posItem->getPosition();
+    auto &positions = currentScene->positions;
+    auto it = std::find_if(positions.begin(), positions.end(), [position](Position &p){return &p == position;});
+    if (it != positions.end()) {
+        positions.erase(it);
+    }
+    sceneEditor->load(editor->scene);
+}
+
 void MainWindow::onGridSizeChanged(int index) {
     sceneEditor->gridSize = gridSizeCombo->itemData(index).toDouble();
 }
@@ -685,6 +757,7 @@ void MainWindow::loadScene(QListWidgetItem* item) {
 void MainWindow::resetForNewChoreo() {
     undoStack->clear();
     sceneEditor->clear();
+    sceneEditor->dancers = &choreo.dancers;
 
     outline->load(choreo.scenes);
 
@@ -759,6 +832,12 @@ void MainWindow::onSelectionCleared() {
     positionStatusWidget->hide();
 }
 
+void MainWindow::addPosition(Dancer* dancer, double x , double y) {
+    Position position{x, y, dancer->id, this->choreo.dancers};
+    editor->scene->positions.push_back(position);
+    sceneEditor->load(editor->scene);
+}
+
 void SceneEditor::onManualXChanged(double value) {
     if (selectedPositionItem) selectedPositionItem->setExactX(value);
 }
@@ -781,7 +860,7 @@ DefinitionEditor::DefinitionEditor(QWidget* parent) : QTextEdit(parent) {
 
 void DefinitionEditor::save() { this->scene->text = this->toPlainText().toStdString(); }
 
-SceneEditor::SceneEditor(Floor* floor, QUndoStack* undoStack, QObject* parent)
+SceneEditor::SceneEditor(Floor* floor,std::vector<std::shared_ptr<Dancer>>*dancers, QUndoStack* undoStack, QObject* parent)
     : QGraphicsScene(parent), floor(floor), undoStack(undoStack) {
     setSceneRect(0, 0, getImWidth(), getImHeight());
 }
@@ -937,6 +1016,7 @@ void PositionItem::setExactY(double meters) {
 
 void SceneEditor::mousePressEvent(QGraphicsSceneMouseEvent* event) {
     QGraphicsScene::mousePressEvent(event);  // let Qt resolve the click/selection first
+    if (event->button() != Qt::LeftButton) return;
     dragging = true;
     dragStartPositions.clear();
     for (QGraphicsItem* item : selectedItems()) {
@@ -948,6 +1028,7 @@ void SceneEditor::mousePressEvent(QGraphicsSceneMouseEvent* event) {
 
 void SceneEditor::mouseReleaseEvent(QGraphicsSceneMouseEvent* event) {
     QGraphicsScene::mouseReleaseEvent(event);
+    if (event->button() != Qt::LeftButton) return;
     dragging = false;
 
     if (undoStack && !dragStartPositions.isEmpty()) {
