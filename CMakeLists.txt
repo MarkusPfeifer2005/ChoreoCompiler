@@ -19,6 +19,7 @@ FetchContent_Declare(
   GIT_TAG        1.1.1   # pin to a real tagged release
 )
 set(PODOFO_BUILD_LIB_ONLY TRUE CACHE BOOL "" FORCE)
+set(PODOFO_BUILD_STATIC TRUE CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(podofo)
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets Pdf)
