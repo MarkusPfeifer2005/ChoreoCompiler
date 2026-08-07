@@ -1,12 +1,4 @@
-#include "export.h"
-#include <algorithm>
-#include <cstdlib>
-#include <cstring>
-#include <filesystem>
-#include <iostream>
-#include <fstream>
-#include <memory>
-#include <ostream>
+#include <podofo/podofo.h>
 #include <qapplication.h>
 #include <qboxlayout.h>
 #include <qcontainerfwd.h>
@@ -18,8 +10,37 @@
 #include <qpdfwriter.h>
 #include <qslider.h>
 #include <qwidget.h>
+
+#include <QApplication>
+#include <QColor>
+#include <QImage>
+#include <QMainWindow>
+#include <QPageSize>
+#include <QPainter>
+#include <QPdfWriter>
+#include <QPushButton>
+#include <QSlider>
+#include <QSpinBox>
+#include <QString>
+#include <QTextEdit>
+#include <QVBoxLayout>
+#include <QWidget>
+#include <algorithm>
+#include <cstdlib>
+#include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <memory>
+#include <nlohmann/json.hpp>
+#include <ostream>
 #include <string>
 #include <vector>
+
+#include "config.h"
+#include "dance.h"
+#include "export.h"
+#include "gui.h"
 #include "qbrush.h"
 #include "qcolor.h"
 #include "qfont.h"
@@ -28,27 +49,7 @@
 #include "qnamespace.h"
 #include "qpaintdevice.h"
 #include "qpen.h"
-#include <QApplication>
-#include <QWidget>
-#include <QImage>
-#include <QPainter>
-#include <QColor>
-#include <QString>
-#include <QColor>
-#include <QPdfWriter>
-#include <QPageSize>
-#include <QPushButton>
-#include <QVBoxLayout>
-#include <QSpinBox>
-#include <QSlider>
-#include "dance.h"
 #include "utils.h"
-#include "config.h"
-#include <QMainWindow>
-#include <QTextEdit>
-#include "gui.h"
-
-
 
 namespace fs = std::filesystem;
 
@@ -57,7 +58,7 @@ SceneEditor* buildSceneForExport(Scene& scene, Floor& floor, int roleID, bool to
     exportScene->topUp = topUp;
     for (auto& pos : scene.positions) {
         PositionItem* item = new PositionItem(&pos, &floor, pos.dancer.get(), &exportScene->topUp,
-                &exportScene->dragging, &exportScene->gridSize);
+                                              &exportScene->dragging, &exportScene->gridSize);
         item->updatePos();
         if (roleID >= 0 && pos.dancer->role->id == roleID) {
             item->setZValue(1);
@@ -70,7 +71,8 @@ SceneEditor* buildSceneForExport(Scene& scene, Floor& floor, int roleID, bool to
 
 QImage renderSceneToImage(Scene& scene, Floor& floor, int roleID = -1, bool topUp = true) {
     std::unique_ptr<SceneEditor> exportScene{buildSceneForExport(scene, floor, roleID, topUp)};
-    QImage image(exportScene->sceneRect().width(), exportScene->sceneRect().height(), QImage::Format_ARGB32);
+    QImage image(exportScene->sceneRect().width(), exportScene->sceneRect().height(),
+                 QImage::Format_ARGB32);
     image.fill(Qt::white);
     QPainter painter(&image);
     painter.setRenderHint(QPainter::Antialiasing);
@@ -79,10 +81,12 @@ QImage renderSceneToImage(Scene& scene, Floor& floor, int roleID = -1, bool topU
     return image;
 }
 
-void renderSceneToPdf(QPainter& painter, Scene& scene, Floor& floor, QPointF targetTopLeft, int roleID = -1, bool topUp = true) {
+void renderSceneToPdf(QPainter& painter, Scene& scene, Floor& floor, QPointF targetTopLeft,
+                      int roleID = -1, bool topUp = true) {
     SceneEditor* exportScene = buildSceneForExport(scene, floor, roleID, topUp);
     QRectF sceneRect = exportScene->sceneRect();
-    QRectF targetRect(targetTopLeft, sceneRect.size());   // native size, positioned at targetTopLeft — same semantics as the old setXYOffset
+    QRectF targetRect(targetTopLeft, sceneRect.size());  // native size, positioned at targetTopLeft
+                                                         // — same semantics as the old setXYOffset
     exportScene->render(&painter, targetRect, sceneRect);
     delete exportScene;
 }
@@ -90,8 +94,7 @@ void renderSceneToPdf(QPainter& painter, Scene& scene, Floor& floor, QPointF tar
 void generateAnki(std::string choreoFileName, std::string dancerName) {
     Choreo choreo{choreoFileName};
     bool found = false;
-    int dancerID = 0,
-        dancerRoleID = 0;
+    int dancerID = 0, dancerRoleID = 0;
     for (const auto dancer : choreo.dancers) {
         if (dancer->name == dancerName) {
             found = true;
@@ -142,46 +145,39 @@ void generateAnki(std::string choreoFileName, std::string dancerName) {
 }
 
 void drawTextBox(QPainter& painter, const QString& bodyText) {
-    QColor choreoGreen(GREEN),
-           textGray(GRAY);
+    QColor choreoGreen(GREEN), textGray(GRAY);
     int pageWidth = painter.device()->width();
 
     // dimensions
-    int boxX      = MARGIN;
-    int headerY   = 2285;
-    int headerH   = 77;
-    int bodyY     = headerY + headerH;
-    int bodyH     = 3426 - bodyY;
+    int boxX = MARGIN;
+    int headerY = 2285;
+    int headerH = 77;
+    int bodyY = headerY + headerH;
+    int bodyH = 3426 - bodyY;
     int innerMargin = 30;
 
     // green header bar
     painter.setPen(Qt::NoPen);
     painter.setBrush(QBrush(choreoGreen));
-    painter.drawRect(boxX, headerY, pageWidth - 2*MARGIN, headerH);
+    painter.drawRect(boxX, headerY, pageWidth - 2 * MARGIN, headerH);
 
     // gray body area
     painter.setBrush(QBrush(textGray));
-    painter.drawRect(boxX, bodyY, pageWidth - 2*MARGIN, bodyH);
+    painter.drawRect(boxX, bodyY, pageWidth - 2 * MARGIN, bodyH);
 
     // header text
     painter.setFont(QFont("Arial", 15, QFont::Bold));
     painter.setPen(QColor("white"));
     painter.drawText(
-        QRect(boxX + innerMargin, headerY, pageWidth - 2*MARGIN - innerMargin, headerH),
-        Qt::AlignLeft | Qt::AlignVCenter,
-        "Definitionen"
-    );
+        QRect(boxX + innerMargin, headerY, pageWidth - 2 * MARGIN - innerMargin, headerH),
+        Qt::AlignLeft | Qt::AlignVCenter, "Definitionen");
 
     // body text — wraps automatically within the gray area minus inner margin
     painter.setFont(QFont("Arial", 12));
     painter.setPen(QColor("black"));
-    painter.drawText(
-        QRect(boxX + innerMargin, bodyY + innerMargin,
-              pageWidth - 2*MARGIN - 2*innerMargin,
-              bodyH - 2*innerMargin),
-        Qt::AlignLeft | Qt::AlignTop | Qt::TextWordWrap,
-        bodyText
-    );
+    painter.drawText(QRect(boxX + innerMargin, bodyY + innerMargin,
+                           pageWidth - 2 * MARGIN - 2 * innerMargin, bodyH - 2 * innerMargin),
+                     Qt::AlignLeft | Qt::AlignTop | Qt::TextWordWrap, bodyText);
 }
 
 void drawFooterHeaderBoxes(QPainter& painter) {
@@ -196,50 +192,44 @@ void drawFooterHeaderBoxes(QPainter& painter) {
 
     painter.setFont(QFont("Arial", 8));
     painter.setPen(QColor("white"));
-    painter.drawText(
-            QRect(0, 0, pageWidth, HEADER_HEIGHT),
-        Qt::AlignHCenter | Qt::AlignVCenter,
-        "Erstellt mit ChoreoCompiler - Source Code: https://github.com/MarkusPfeifer2005/ChoreoCompiler"
-    );
+    painter.drawText(QRect(0, 0, pageWidth, HEADER_HEIGHT), Qt::AlignHCenter | Qt::AlignVCenter,
+                     "Erstellt mit ChoreoCompiler - Source Code: "
+                     "https://github.com/MarkusPfeifer2005/ChoreoCompiler");
 }
 
-void drawFooterHeader(QPainter& painter, unsigned int pageNum, unsigned int totalPages, std::string choreoTitle) {
+void drawFooterHeader(QPainter& painter, unsigned int pageNum, unsigned int totalPages,
+                      std::string choreoTitle) {
     int pageWidth = painter.device()->width();
     int pageHeight = painter.device()->height();
     drawFooterHeaderBoxes(painter);
 
     painter.setPen(QColor("white"));
     painter.setFont(QFont("Arial", 10));
-    painter.drawText(
-            QRect(MARGIN, pageHeight - FOOTER_HEIGHT, pageWidth - MARGIN, FOOTER_HEIGHT),
-        Qt::AlignLeft | Qt::AlignVCenter,
-        "Seite " + QString::number(pageNum) + "/" + QString::number(totalPages) + " (" + QString::fromStdString(choreoTitle) + ")"
-    );
+    painter.drawText(QRect(MARGIN, pageHeight - FOOTER_HEIGHT, pageWidth - MARGIN, FOOTER_HEIGHT),
+                     Qt::AlignLeft | Qt::AlignVCenter,
+                     "Seite " + QString::number(pageNum) + "/" + QString::number(totalPages) +
+                         " (" + QString::fromStdString(choreoTitle) + ")");
 }
 
-void drawTitle(QPainter& painter, std::string title, unsigned int pageNum, unsigned int totalPages) {
+void drawTitle(QPainter& painter, std::string title, unsigned int pageNum,
+               unsigned int totalPages) {
     int pageWidth = painter.device()->width();
-    int headerHeight = 25; // must match drawFooterHeader
+    int headerHeight = 25;  // must match drawFooterHeader
     int titleHeight = 100;
-    int titleY = 40; // start right below the header
+    int titleY = 40;  // start right below the header
     int fontSize = 12;
 
     // Left: title text
     painter.setFont(QFont("Arial", fontSize));
     painter.setPen(QColor(GREEN));
-    painter.drawText(
-        QRect(MARGIN, titleY, pageWidth / 2, titleHeight),
-        Qt::AlignLeft | Qt::AlignVCenter,
-        QString::number(pageNum) + "/" + QString::number(totalPages)
-    );
+    painter.drawText(QRect(MARGIN, titleY, pageWidth / 2, titleHeight),
+                     Qt::AlignLeft | Qt::AlignVCenter,
+                     QString::number(pageNum) + "/" + QString::number(totalPages));
 
     // Right: bold centered text
     painter.setFont(QFont("Arial", fontSize, QFont::Bold));
-    painter.drawText(
-        QRect(0, titleY, pageWidth, titleHeight),
-        Qt::AlignHCenter | Qt::AlignVCenter,
-        title.c_str()
-    );
+    painter.drawText(QRect(0, titleY, pageWidth, titleHeight), Qt::AlignHCenter | Qt::AlignVCenter,
+                     title.c_str());
 }
 
 void drawSidePanel(QPainter& painter, Scene& scene, std::vector<std::shared_ptr<Role>>& roles) {
@@ -250,20 +240,18 @@ void drawSidePanel(QPainter& painter, Scene& scene, std::vector<std::shared_ptr<
     int H = 1800;
     int headerHeight = 80;
     int pageWidth = painter.device()->width();
-    int rowHeight = (H/numRoles - headerHeight) / (numPos/numRoles);
+    int rowHeight = (H / numRoles - headerHeight) / (numPos / numRoles);
     int rowWidth = 460;
     int Y = 150;
     int X = pageWidth - MARGIN - rowWidth;
 
     QFont font("Courier New");
     font.setPixelSize(rowHeight / 2.9);
-    
-    std::sort(roles.begin(), roles.end(), [](const auto& a, const auto& b) {
-            return a->id > b->id;
-            });
-    std::sort(scene.positions.begin(), scene.positions.end(), [](const auto& a, const auto& b) {
-            return a.y < b.y;
-            });
+
+    std::sort(roles.begin(), roles.end(),
+              [](const auto& a, const auto& b) { return a->id > b->id; });
+    std::sort(scene.positions.begin(), scene.positions.end(),
+              [](const auto& a, const auto& b) { return a.y < b.y; });
 
     for (auto role : roles) {
         // draw header
@@ -275,11 +263,8 @@ void drawSidePanel(QPainter& painter, Scene& scene, std::vector<std::shared_ptr<
         // header text
         painter.setPen(QColor("white"));
         painter.setFont(QFont("Arial", 12, QFont::Bold));
-        painter.drawText(
-            QRect(X, Y, rowWidth, headerHeight),
-            Qt::AlignHCenter | Qt::AlignVCenter,
-            QString::fromStdString(role->name)
-        );
+        painter.drawText(QRect(X, Y, rowWidth, headerHeight), Qt::AlignHCenter | Qt::AlignVCenter,
+                         QString::fromStdString(role->name));
 
         Y += headerHeight;
         painter.setPen(Qt::NoPen);
@@ -297,25 +282,20 @@ void drawSidePanel(QPainter& painter, Scene& scene, std::vector<std::shared_ptr<
                 text.append(QString::number(std::abs(pos.x), 'f', 2));
                 if (pos.x > 0) {
                     text.append(" re | ");
-                }
-                else {
+                } else {
                     text.append(" li | ");
                 }
                 text.append(QString::number(std::abs(pos.y), 'f', 2));
                 if (pos.y > 0) {
                     text.append(" vo");
-                }
-                else {
+                } else {
                     text.append(" hi");
                 }
 
                 painter.setPen(getTextColor(col));
                 painter.setFont(font);
-                painter.drawText(
-                    QRect(X, Y, rowWidth, rowHeight),
-                    Qt::AlignHCenter | Qt::AlignVCenter,
-                    text
-                );
+                painter.drawText(QRect(X, Y, rowWidth, rowHeight),
+                                 Qt::AlignHCenter | Qt::AlignVCenter, text);
 
                 Y += rowHeight;
             }
@@ -323,19 +303,17 @@ void drawSidePanel(QPainter& painter, Scene& scene, std::vector<std::shared_ptr<
     }
 }
 
-void drawTeamList(QPainter& painter,
-        std::vector<std::shared_ptr<Dancer>>& dancers,
-        std::vector<std::shared_ptr<Role>>& roles) {
-
+void drawTeamList(QPainter& painter, std::vector<std::shared_ptr<Dancer>>& dancers,
+                  std::vector<std::shared_ptr<Role>>& roles) {
     int pageWidth = painter.device()->width();
     int Y = 300;
-    int roleWidth = (pageWidth - 2*MARGIN) * 2/10;
-    int symbolWidth = (pageWidth - 2*MARGIN) * 1/10;
-    int nameWidth = (pageWidth - 2*MARGIN) * 7/10;
+    int roleWidth = (pageWidth - 2 * MARGIN) * 2 / 10;
+    int symbolWidth = (pageWidth - 2 * MARGIN) * 1 / 10;
+    int nameWidth = (pageWidth - 2 * MARGIN) * 7 / 10;
     int H = 2500;
     int numRoles = roles.size();
     int numDancers = dancers.size();
-    int rowHeight = H/numRoles / (numDancers/numRoles + 1) ;
+    int rowHeight = H / numRoles / (numDancers / numRoles + 1);
 
     QColor choreoGreen(GREEN);
 
@@ -343,31 +321,24 @@ void drawTeamList(QPainter& painter,
     painter.setFont(QFont("Arial", 25, QFont::Bold));
     painter.setPen(QColor(GREEN));
     painter.drawText(
-        QRect(MARGIN, 150, pageWidth -2*MARGIN, 100),  // 150 = your starting Y before the loop
-        Qt::AlignHCenter | Qt::AlignVCenter,
-        "Tänzerinnen und Tänzer"
-    );
+        QRect(MARGIN, 150, pageWidth - 2 * MARGIN, 100),  // 150 = your starting Y before the loop
+        Qt::AlignHCenter | Qt::AlignVCenter, "Tänzerinnen und Tänzer");
 
     for (const auto& role : roles) {
-        Y+=rowHeight;
-        for (const auto& dancer :  dancers) {
+        Y += rowHeight;
+        for (const auto& dancer : dancers) {
             if (dancer->role->id != role->id) {
                 continue;
             }
             painter.setFont(QFont("Arial", 18));
             painter.setPen(QColor(GREEN));
-            painter.drawText(
-                    QRect(MARGIN, Y, roleWidth, rowHeight),
-                    Qt::AlignHCenter | Qt::AlignVCenter,
-                    role->name.c_str()
-                    );
-            painter.drawText(
-                    QRect(MARGIN + roleWidth + symbolWidth, Y, nameWidth, rowHeight),
-                    Qt::AlignHCenter | Qt::AlignVCenter,
-                    dancer->name.c_str()
-                    );
-            PositionItem::drawDancerBody(&painter, &*dancer, MARGIN + roleWidth + symbolWidth/2, Y + rowHeight/2); 
-            Y+=rowHeight;
+            painter.drawText(QRect(MARGIN, Y, roleWidth, rowHeight),
+                             Qt::AlignHCenter | Qt::AlignVCenter, role->name.c_str());
+            painter.drawText(QRect(MARGIN + roleWidth + symbolWidth, Y, nameWidth, rowHeight),
+                             Qt::AlignHCenter | Qt::AlignVCenter, dancer->name.c_str());
+            PositionItem::drawDancerBody(&painter, &*dancer, MARGIN + roleWidth + symbolWidth / 2,
+                                         Y + rowHeight / 2);
+            Y += rowHeight;
         }
     }
     drawFooterHeaderBoxes(painter);
@@ -377,17 +348,11 @@ void drawInfo(QPainter& painter, std::string header, std::string text, int Y) {
     int textFieldHeight = 100;
     int pageWidth = painter.device()->width();
     painter.setFont(QFont("Arial", 15, QFont::Bold));
-    painter.drawText(
-            QRect(MARGIN, Y, pageWidth -2*MARGIN, textFieldHeight),
-        Qt::AlignHCenter | Qt::AlignVCenter,
-        header.c_str()
-    );
+    painter.drawText(QRect(MARGIN, Y, pageWidth - 2 * MARGIN, textFieldHeight),
+                     Qt::AlignHCenter | Qt::AlignVCenter, header.c_str());
     painter.setFont(QFont("Arial", 15));
-    painter.drawText(
-            QRect(MARGIN, Y + textFieldHeight, pageWidth -2*MARGIN, textFieldHeight),
-        Qt::AlignHCenter | Qt::AlignVCenter,
-        text.c_str()
-    );
+    painter.drawText(QRect(MARGIN, Y + textFieldHeight, pageWidth - 2 * MARGIN, textFieldHeight),
+                     Qt::AlignHCenter | Qt::AlignVCenter, text.c_str());
 }
 
 void drawTitlePage(QPainter& painter, Choreo& choreo) {
@@ -397,11 +362,8 @@ void drawTitlePage(QPainter& painter, Choreo& choreo) {
     painter.setPen(QColor(GREEN));
 
     painter.setFont(QFont("Arial", 25, QFont::Bold));
-    painter.drawText(
-        QRect(MARGIN, 300, pageWidth -2*MARGIN, 100),
-        Qt::AlignHCenter | Qt::AlignVCenter,
-        choreo.name.c_str()
-    );
+    painter.drawText(QRect(MARGIN, 300, pageWidth - 2 * MARGIN, 100),
+                     Qt::AlignHCenter | Qt::AlignVCenter, choreo.name.c_str());
 
     drawInfo(painter, "Variante der Choreo", choreo.variation, 1900);
     drawInfo(painter, "Beschreibung:", choreo.description, 2400);
@@ -411,25 +373,45 @@ void drawTitlePage(QPainter& painter, Choreo& choreo) {
     painter.setPen(QColor("white"));
     painter.setFont(QFont("Arial", 12));
     painter.drawText(
-            QRect(MARGIN, pageHeight-FOOTER_HEIGHT, pageWidth-2*MARGIN, FOOTER_HEIGHT),
+        QRect(MARGIN, pageHeight - FOOTER_HEIGHT, pageWidth - 2 * MARGIN, FOOTER_HEIGHT),
         Qt::AlignHCenter | Qt::AlignVCenter,
-        ("Choreo zuletzt geändert am " + toGermanDate(choreo.lastSaveDate)).c_str()
-    );
+        ("Choreo zuletzt geändert am " + toGermanDate(choreo.lastSaveDate)).c_str());
 }
 
-void generatePDF(Choreo &choreo, std::string pdfName, bool topUp, int dpi) {
+void addBookmarks(const std::string& pdfPath, const Choreo& choreo) {
+    const std::string tmpPath = pdfPath + ".tmp";
+    PoDoFo::PdfMemDocument doc;
+    doc.Load(pdfPath);
+
+    auto& outlines = doc.GetOrCreateOutlines();
+    auto& root = outlines.CreateRoot(PoDoFo::PdfString("Scenes"));
+
+    unsigned pageIndex = 2;
+    for (const auto& scene : choreo.scenes) {
+        auto& page = doc.GetPages().GetPageAt(pageIndex);
+        auto dest = doc.CreateDestination();
+        dest->SetDestination(page);
+        auto& item = root.CreateChild(PoDoFo::PdfString(scene.name));
+        item.SetDestination(*dest);
+        ++pageIndex;
+    }
+
+    doc.Save(tmpPath);
+    std::filesystem::rename(tmpPath, pdfPath);  // same filesystem, so this is atomic
+}
+
+void generatePDF(Choreo& choreo, std::string pdfName, bool topUp, int dpi) {
     QPdfWriter writer(pdfName.c_str());
     writer.setPageSize(QPageSize::A4);
     writer.setResolution(dpi);
-    writer.setPageMargins(QMarginsF(0, 0, 0, 0)); // No margins
+    writer.setPageMargins(QMarginsF(0, 0, 0, 0));  // No margins
     QPainter painter(&writer);
 
     drawTitlePage(painter, choreo);
     writer.newPage();
     drawTeamList(painter, choreo.dancers, choreo.roles);
 
-    int currPage = 1,
-        totalPages = choreo.scenes.size();
+    int currPage = 1, totalPages = choreo.scenes.size();
     for (Scene scene : choreo.scenes) {
         writer.newPage();
         drawFooterHeader(painter, currPage, totalPages, choreo.name);
@@ -441,4 +423,5 @@ void generatePDF(Choreo &choreo, std::string pdfName, bool topUp, int dpi) {
         currPage++;
     }
     painter.end();
+    addBookmarks(pdfName, choreo);
 }
