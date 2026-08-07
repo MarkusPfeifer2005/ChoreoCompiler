@@ -13,3 +13,4 @@ compile_commands.json
 *.synctex.gz
 .cache/
 run.sh
+.clang-format

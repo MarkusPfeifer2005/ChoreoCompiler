@@ -1,8 +1,3 @@
-#include "gui.h"
-#include "config.h"
-#include "dance.h"
-#include "utils.h"
-#include <fstream>
 #include <qaction.h>
 #include <qapplication.h>
 #include <qcoreapplication.h>
@@ -10,33 +5,40 @@
 #include <qgraphicsscene.h>
 #include <qgraphicsview.h>
 #include <qkeysequence.h>
-#include <QString>
-#include <QAction>
-#include <QStyle>
-#include <QFileDialog>
 #include <qlistwidget.h>
 #include <qmainwindow.h>
-#include <QDockWidget>
 #include <qnamespace.h>
 #include <qpaintdevice.h>
 #include <qpainter.h>
 #include <qstyleoption.h>
 #include <qtextedit.h>
-#include <QListWidget>
 #include <qundostack.h>
 #include <qwidget.h>
-#include <vector>
-#include <QToolBar>
-#include "export.h"
+
+#include <QAction>
 #include <QContextMenuEvent>
-#include <algorithm>   // std::max
+#include <QDockWidget>
+#include <QFileDialog>
+#include <QListWidget>
+#include <QString>
+#include <QStyle>
+#include <QToolBar>
+#include <algorithm>  // std::max
+#include <fstream>
+#include <memory>
+#include <vector>
 
-double m_to_px(double meter) {return meter*PX_M;}
+#include "config.h"
+#include "dance.h"
+#include "export.h"
+#include "gui.h"
+#include "utils.h"
 
-double xPos_to_px(double meter) {return BORDER + meter*PX_M;}
+double m_to_px(double meter) { return meter * PX_M; }
 
-double yPos_to_px(double meter) {return BORDER + meter*PX_M;}
+double xPos_to_px(double meter) { return BORDER + meter * PX_M; }
 
+double yPos_to_px(double meter) { return BORDER + meter * PX_M; }
 
 MovePositionCommand::MovePositionCommand(PositionItem* item, QPointF oldPos, QPointF newPos)
     : item(item), oldPos(oldPos), newPos(newPos) {}
@@ -62,7 +64,8 @@ void RoleListWidget::load() {
 
 // --- RoleDialog ---
 
-RoleDialog::RoleDialog(std::vector<std::shared_ptr<Role>>* roles, std::vector<std::shared_ptr<Dancer>>* dancers, QWidget* parent)
+RoleDialog::RoleDialog(std::vector<std::shared_ptr<Role>>* roles,
+                       std::vector<std::shared_ptr<Dancer>>* dancers, QWidget* parent)
     : QDialog(parent), roles(roles), dancers(dancers) {
     setWindowTitle(tr("Manage Roles"));
 
@@ -77,7 +80,8 @@ RoleDialog::RoleDialog(std::vector<std::shared_ptr<Role>>* roles, std::vector<st
 
     zIndexSpin = new QSpinBox(this);
     zIndexSpin->setRange(0, 999);
-    connect(zIndexSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, &RoleDialog::onZIndexChanged);
+    connect(zIndexSpin, QOverload<int>::of(&QSpinBox::valueChanged), this,
+            &RoleDialog::onZIndexChanged);
 
     QPushButton* addButton = new QPushButton(tr("Add Role"), this);
     connect(addButton, &QPushButton::clicked, this, &RoleDialog::onAddClicked);
@@ -120,7 +124,8 @@ void RoleDialog::showRole(int index) {
 }
 
 void RoleDialog::updateColorButton() {
-    colorButton->setStyleSheet(QString("background-color: %1;").arg(currentColor.name(QColor::HexArgb)));
+    colorButton->setStyleSheet(
+        QString("background-color: %1;").arg(currentColor.name(QColor::HexArgb)));
 }
 
 void RoleDialog::onSelectionChanged() {
@@ -148,7 +153,8 @@ void RoleDialog::onZIndexChanged(int value) {
 void RoleDialog::onColorClicked() {
     int index = roleList->currentRow();
     if (index < 0) return;
-    QColor chosen = QColorDialog::getColor(currentColor, this, tr("Choose Role Color"), QColorDialog::ShowAlphaChannel);
+    QColor chosen = QColorDialog::getColor(currentColor, this, tr("Choose Role Color"),
+                                           QColorDialog::ShowAlphaChannel);
     if (chosen.isValid()) {
         currentColor = chosen;
         updateColorButton();
@@ -159,7 +165,8 @@ void RoleDialog::onColorClicked() {
 void RoleDialog::onAddClicked() {
     int newId = 0;
     for (const auto& r : *roles) newId = std::max(newId, r->id + 1);
-    roles->push_back(std::make_shared<Role>("New Role", newId, "#FF808080", static_cast<int>(roles->size())));
+    roles->push_back(
+        std::make_shared<Role>("New Role", newId, "#FF808080", static_cast<int>(roles->size())));
     roleList->load();
     roleList->setCurrentRow(static_cast<int>(roles->size()) - 1);
 }
@@ -171,7 +178,8 @@ void RoleDialog::onRemoveClicked() {
     for (const auto& d : *dancers) {
         if (d->role && d->role->id == roleID) {
             QMessageBox::warning(this, tr("Cannot Remove Role"),
-                tr("This role is still assigned to at least one dancer. Reassign those dancers first."));
+                                 tr("This role is still assigned to at least one dancer. Reassign "
+                                    "those dancers first."));
             return;
         }
     }
@@ -206,7 +214,7 @@ void DancerListWidget::load() {
 // --- DancerDialog ---
 
 DancerDialog::DancerDialog(std::vector<std::shared_ptr<Dancer>>* dancers,
-        std::vector<std::shared_ptr<Role>>* roles, QWidget* parent)
+                           std::vector<std::shared_ptr<Role>>* roles, QWidget* parent)
     : QDialog(parent), dancers(dancers), roles(roles) {
     setWindowTitle(tr("Manage Dancers"));
 
@@ -220,7 +228,8 @@ DancerDialog::DancerDialog(std::vector<std::shared_ptr<Dancer>>* dancers,
     connect(shortcutEdit, &QLineEdit::textEdited, this, &DancerDialog::onShortcutEdited);
 
     roleCombo = new QComboBox(this);
-    connect(roleCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &DancerDialog::onRoleChanged);
+    connect(roleCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            &DancerDialog::onRoleChanged);
 
     colorButton = new QPushButton(tr("Choose Color"), this);
     connect(colorButton, &QPushButton::clicked, this, &DancerDialog::onColorClicked);
@@ -285,7 +294,8 @@ void DancerDialog::showDancer(int index) {
 }
 
 void DancerDialog::updateColorButton() {
-    colorButton->setStyleSheet(QString("background-color: %1;").arg(currentColor.name(QColor::HexArgb)));
+    colorButton->setStyleSheet(
+        QString("background-color: %1;").arg(currentColor.name(QColor::HexArgb)));
 }
 
 void DancerDialog::onSelectionChanged() {
@@ -326,7 +336,8 @@ void DancerDialog::onRoleChanged(int comboIndex) {
 void DancerDialog::onColorClicked() {
     int index = dancerList->currentRow();
     if (index < 0) return;
-    QColor chosen = QColorDialog::getColor(currentColor, this, tr("Choose Dancer Color"), QColorDialog::ShowAlphaChannel);
+    QColor chosen = QColorDialog::getColor(currentColor, this, tr("Choose Dancer Color"),
+                                           QColorDialog::ShowAlphaChannel);
     if (chosen.isValid()) {
         currentColor = chosen;
         updateColorButton();
@@ -336,7 +347,8 @@ void DancerDialog::onColorClicked() {
 
 void DancerDialog::onAddClicked() {
     if (roles->empty()) {
-        QMessageBox::warning(this, tr("No Roles"), tr("Create at least one role before adding dancers."));
+        QMessageBox::warning(this, tr("No Roles"),
+                             tr("Create at least one role before adding dancers."));
         return;
     }
     int newId = 0;
@@ -364,8 +376,9 @@ void DancerDialog::onRemoveClicked() {
 }
 
 // Document Outline
-OutlineWidget::OutlineWidget(std::vector<Scene>& scenes, QWidget* parent):
-QListWidget(parent), scenes(&scenes) {
+
+OutlineWidget::OutlineWidget(std::vector<Scene>& scenes, QWidget* parent)
+    : QListWidget(parent), scenes(&scenes) {
     this->setEditTriggers(QAbstractItemView::DoubleClicked);
     this->setDragDropMode(QAbstractItemView::InternalMove);
     connect(this, &QListWidget::itemChanged, this, &OutlineWidget::onItemRenamed);
@@ -382,7 +395,7 @@ void OutlineWidget::load() {
     }
 }
 
-void OutlineWidget::load(std::vector<Scene> &scenes) {
+void OutlineWidget::load(std::vector<Scene>& scenes) {
     this->scenes = &scenes;
     load();
 }
@@ -406,18 +419,17 @@ void OutlineWidget::onItemMoved(const QModelIndex&, int, int, const QModelIndex&
     }
 }
 
-void OutlineWidget::contextMenuEvent(QContextMenuEvent *event) {
-    QListWidgetItem *item = itemAt(event->pos());
+void OutlineWidget::contextMenuEvent(QContextMenuEvent* event) {
+    QListWidgetItem* item = itemAt(event->pos());
 
-    if (!item)
-        return; // right-clicked empty space
+    if (!item) return;  // right-clicked empty space
 
     QMenu menu(this);
 
-    QAction *addAction = menu.addAction("Add Scene");
-    QAction *removeAction = menu.addAction("Remove Scene");
+    QAction* addAction = menu.addAction("Add Scene");
+    QAction* removeAction = menu.addAction("Remove Scene");
 
-    QAction *chosen = menu.exec(event->globalPos());
+    QAction* chosen = menu.exec(event->globalPos());
 
     if (chosen == addAction)
         addScene(item);
@@ -430,7 +442,7 @@ void OutlineWidget::addScene(QListWidgetItem* item) {
     if (idx < 0 || idx >= static_cast<int>(scenes->size())) {
         throw std::out_of_range("addScene: index out of range");
     }
-    scenes->insert(scenes->begin()+idx, Scene(scenes->at(idx)));
+    scenes->insert(scenes->begin() + idx, Scene(scenes->at(idx)));
     load();
 }
 
@@ -439,21 +451,18 @@ void OutlineWidget::removeScene(QListWidgetItem* item) {
     if (idx < 0 || idx >= static_cast<int>(scenes->size())) {
         throw std::out_of_range("addScene: index out of range");
     }
-    scenes->erase(scenes->begin()+idx);
+    scenes->erase(scenes->begin() + idx);
     load();
 }
 
 // Main Window
-MainWindow::MainWindow(QMainWindow* parent, Qt::WindowFlags flags):
-QMainWindow(parent, flags) {
+MainWindow::MainWindow(QMainWindow* parent, Qt::WindowFlags flags) : QMainWindow(parent, flags) {
     setWindowTitle("CoCo");
 
     undoStack = new QUndoStack(this);
-    floorScene = new FloorScene(&this->choreo.floor, undoStack, this);
-    canvas = new CanvasView(floorScene, this);
-    setCentralWidget(canvas);
-    canvas->setRenderHint(QPainter::Antialiasing);
-    canvas->setDragMode(QGraphicsView::RubberBandDrag);
+    sceneEditor = new SceneEditor(&this->choreo.floor, undoStack, this);
+    rGraphicsView = new ResizableQGraphicsView(sceneEditor, this);
+    setCentralWidget(rGraphicsView);
 
     editor = new DefinitionEditor;
     textDock = new QDockWidget(tr("definition text"), this);
@@ -470,7 +479,7 @@ QMainWindow(parent, flags) {
 
     statusBar();
 
-    QMenu *fileMenu = new QMenu(tr("&File"), this);
+    QMenu* fileMenu = new QMenu(tr("&File"), this);
     menuBar()->addMenu(fileMenu);
 
     QAction* actNewFile = fileMenu->addAction(tr("&New"));
@@ -508,9 +517,8 @@ QMainWindow(parent, flags) {
     gridSizeCombo->addItem(tr("Fine (0.25 m)"), 0.25);
     int defaultIndex = 3;
     gridSizeCombo->setCurrentIndex(defaultIndex);
-    connect(gridSizeCombo,
-            QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, &MainWindow::onGridSizeChanged);
+    connect(gridSizeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            &MainWindow::onGridSizeChanged);
     emit onGridSizeChanged(defaultIndex);
 
     QToolBar* toolFile = addToolBar(tr("File"));
@@ -527,7 +535,7 @@ QMainWindow(parent, flags) {
     connect(actManageDancers, &QAction::triggered, this, &MainWindow::openDancerDialog);
 
     QMenu* editMenu = new QMenu(tr("&Edit"), this);
-        menuBar()->addMenu(editMenu);
+    menuBar()->addMenu(editMenu);
 
     QAction* actUndo = undoStack->createUndoAction(this, tr("&Undo"));
     actUndo->setShortcut(QKeySequence::Undo);
@@ -558,7 +566,8 @@ QMainWindow(parent, flags) {
     xSpin = new QDoubleSpinBox(positionStatusWidget);
     xSpin->setDecimals(3);
     xSpin->setSingleStep(0.05);
-    xSpin->setRange(-static_cast<double>(choreo.floor.SizeLeft), static_cast<double>(choreo.floor.SizeRight));
+    xSpin->setRange(-static_cast<double>(choreo.floor.SizeLeft),
+                    static_cast<double>(choreo.floor.SizeRight));
     posLayout->addWidget(xSpin);
 
     posLayout->addWidget(new QLabel(tr("Y:"), positionStatusWidget));
@@ -569,12 +578,17 @@ QMainWindow(parent, flags) {
     posLayout->addWidget(ySpin);
 
     statusBar()->addPermanentWidget(positionStatusWidget);
-    positionStatusWidget->hide();   // nothing selected at startup
+    positionStatusWidget->hide();  // nothing selected at startup
 
-    connect(floorScene, &QGraphicsScene::selectionChanged, this, &MainWindow::onCanvasSelectionChanged);
-    connect(floorScene, &FloorScene::positionMoved, this, &MainWindow::onPositionMoved);
-    connect(xSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &MainWindow::onManualXChanged);
-    connect(ySpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &MainWindow::onManualYChanged);
+    connect(sceneEditor, &QGraphicsScene::selectionChanged, sceneEditor,
+            &SceneEditor::onSelectedPositionsChanged);
+    connect(sceneEditor, &SceneEditor::positionMoved, sceneEditor, &SceneEditor::onPositionMoved);
+    connect(sceneEditor, &SceneEditor::singlePositionSelected, this, &MainWindow::onSinglePositionSelected);
+    connect(sceneEditor, &SceneEditor::selectionCleared, this, &MainWindow::onSelectionCleared);
+    connect(xSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), sceneEditor,
+            &SceneEditor::onManualXChanged);
+    connect(ySpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), sceneEditor,
+            &SceneEditor::onManualYChanged);
 }
 
 void MainWindow::newFile() {
@@ -585,16 +599,12 @@ void MainWindow::newFile() {
 }
 
 void MainWindow::onGridSizeChanged(int index) {
-    floorScene->gridSize = gridSizeCombo->itemData(index).toDouble();
+    sceneEditor->gridSize = gridSizeCombo->itemData(index).toDouble();
 }
 
 void MainWindow::openFile() {
-    QString fileName = QFileDialog::getOpenFileName(
-            this,
-        tr("Open File"),
-        "",
-        tr("JSON and Choreo files (*.json *.choreo)")
-    );
+    QString fileName = QFileDialog::getOpenFileName(this, tr("Open File"), "",
+                                                    tr("JSON and Choreo files (*.json *.choreo)"));
     if (fileName.isEmpty()) {
         statusBar()->showMessage(tr("No file loaded!"));
         return;
@@ -607,12 +617,8 @@ void MainWindow::openFile() {
 }
 
 void MainWindow::saveAsFile() {
-    QString fileName = QFileDialog::getSaveFileName(
-        this,
-        tr("Save File"),
-        "",
-        tr("JSON and Choreo files (*.json *.choreo)")
-    );
+    QString fileName = QFileDialog::getSaveFileName(this, tr("Save File"), "",
+                                                    tr("JSON and Choreo files (*.json *.choreo)"));
     if (fileName.isEmpty()) {
         statusBar()->showMessage(tr("No file saved!"));
         return;
@@ -633,12 +639,8 @@ void MainWindow::saveFile() {
 }
 
 void MainWindow::pdfExport() {
-    QString fileName = QFileDialog::getSaveFileName(
-        this,
-        tr("Export File"),
-        "",
-        tr("PDF files (*.pdf)")
-    );
+    QString fileName =
+        QFileDialog::getSaveFileName(this, tr("Export File"), "", tr("PDF files (*.pdf)"));
 
     if (fileName.isEmpty()) {
         statusBar()->showMessage(tr("No file exported!"));
@@ -647,47 +649,52 @@ void MainWindow::pdfExport() {
     generatePDF(this->choreo, fileName.toStdString(), false);
 }
 
+void SceneEditor::load(Scene* scene) {
+    clear();
+    for (auto& pos : scene->positions) {
+        PositionItem* posItem =
+            new PositionItem(&pos, floor, pos.dancer.get(), &this->topUp,
+                             &this->dragging, &this->gridSize);
+        posItem->updatePos();
+        posItem->setZValue(pos.dancer->role->zIndex);
+        addItem(posItem);
+        this->positions.push_back(&pos);
+    }
+    update();
+}
+
 void MainWindow::loadSceneByIndex(int index) {
     if (index < 0 || index >= static_cast<int>(choreo.scenes.size())) {
-        return;   // nothing valid to load
+        return;
     }
+
     this->editor->scene = &this->choreo.scenes[index];
     this->editor->setText(QString::fromStdString(this->editor->scene->text));
 
-    selectedPositionItem = nullptr;
     positionStatusWidget->hide();
+
     undoStack->clear();
-    this->floorScene->clear();
-    this->floorScene->positions.clear();
-    for (auto& pos : this->editor->scene->positions) {
-        PositionItem* posItem = new PositionItem(&pos, &choreo.floor, pos.dancer.get(),
-                &floorScene->topUp, &floorScene->dragging, &floorScene->gridSize);
-        posItem->updatePos();
-        posItem->setZValue(pos.dancer->role->zIndex);
-        //connect(posItem, &PositionItem::itemChange::ItemPositionHasChanged, this, &MainWindow::onCanvasSelectionChanged) // ???
-        this->floorScene->addItem(posItem);
-        this->floorScene->positions.push_back(&pos);
-    }
-    floorScene->update();
+    sceneEditor->load(this->editor->scene);
 }
 
-void MainWindow::loadScene(QListWidgetItem *item) {
+void MainWindow::loadScene(QListWidgetItem* item) {
     int index = item->data(Qt::UserRole).toInt();
     loadSceneByIndex(index);
 }
 
 void MainWindow::resetForNewChoreo() {
     undoStack->clear();
-    floorScene->clear();
-    floorScene->positions.clear();
+    sceneEditor->clear();
 
     outline->load(choreo.scenes);
 
     if (!choreo.scenes.empty()) {
         loadSceneByIndex(0);
     }
-    xSpin->setRange(-static_cast<double>(choreo.floor.SizeLeft), static_cast<double>(choreo.floor.SizeRight));
-    ySpin->setRange(-static_cast<double>(choreo.floor.SizeBack), static_cast<double>(choreo.floor.SizeFront));
+    xSpin->setRange(-static_cast<double>(choreo.floor.SizeLeft),
+                    static_cast<double>(choreo.floor.SizeRight));
+    ySpin->setRange(-static_cast<double>(choreo.floor.SizeBack),
+                    static_cast<double>(choreo.floor.SizeFront));
 }
 
 void MainWindow::openRoleDialog() {
@@ -708,8 +715,8 @@ void MainWindow::openDancerDialog() {
     }
 }
 
-void MainWindow::onCanvasSelectionChanged() {
-    QList<QGraphicsItem*> selected = floorScene->selectedItems();
+void SceneEditor::onSelectedPositionsChanged() {
+    QList<QGraphicsItem*> selected = selectedItems();
     PositionItem* found = nullptr;
     int selectedItemsCount = 0;
     for (QGraphicsItem* item : selected) {
@@ -724,97 +731,99 @@ void MainWindow::onCanvasSelectionChanged() {
         Dancer* dancer = found->getDancer();
         Position* pos = found->getPosition();
 
-        positionNameLabel->setText(QString::fromStdString(dancer->name) + " (" +
-                                    QString::fromStdString(dancer->role->name) + ")");
-
-        xSpin->blockSignals(true);
-        ySpin->blockSignals(true);
-        xSpin->setValue(pos->x);
-        ySpin->setValue(pos->y);
-        xSpin->blockSignals(false);
-        ySpin->blockSignals(false);
-
-        positionStatusWidget->show();
+        QString text = QString::fromStdString(dancer->name) + " (" +
+                       QString::fromStdString(dancer->role->name) + ")";
+        emit singlePositionSelected(text, pos->x, pos->y);
     } else {
         selectedPositionItem = nullptr;
-        positionStatusWidget->hide();
+        emit selectionCleared();
     }
 }
 
-void MainWindow::onManualXChanged(double value) {
-    if (selectedPositionItem) selectedPositionItem->setExactX(value);
-}
-
-void MainWindow::onManualYChanged(double value) {
-    if (selectedPositionItem) selectedPositionItem->setExactY(value);
-}
-
-void MainWindow::onPositionMoved(PositionItem* item) {
-    if (item != selectedPositionItem) return;   // ignore drags on items not currently shown
-
-    Position* pos = item->getPosition();
+void MainWindow::onUpdateCoordinateStatus(double x, double y) {
     xSpin->blockSignals(true);
     ySpin->blockSignals(true);
-    xSpin->setValue(pos->x);
-    ySpin->setValue(pos->y);
+    xSpin->setValue(x);
+    ySpin->setValue(y);
     xSpin->blockSignals(false);
     ySpin->blockSignals(false);
 }
 
+void MainWindow::onSinglePositionSelected(QString text, double x, double y) {
+    positionNameLabel->setText(text);
+    onUpdateCoordinateStatus(x, y);
+    positionStatusWidget->show();
+}
+
+void MainWindow::onSelectionCleared() {
+    positionStatusWidget->hide();
+}
+
+void SceneEditor::onManualXChanged(double value) {
+    if (selectedPositionItem) selectedPositionItem->setExactX(value);
+}
+
+void SceneEditor::onManualYChanged(double value) {
+    if (selectedPositionItem) selectedPositionItem->setExactY(value);
+}
+
+void SceneEditor::onPositionMoved(PositionItem* item) {
+    if (item != selectedPositionItem) return;  // ignore drags on items not currently shown
+
+    Position* pos = item->getPosition();
+    emit updateCoordinateStatus(pos->x, pos->y);
+}
+
 // Definition Editor
-DefinitionEditor::DefinitionEditor(QWidget* parent): QTextEdit(parent) {
+DefinitionEditor::DefinitionEditor(QWidget* parent) : QTextEdit(parent) {
     connect(this, &DefinitionEditor::textChanged, this, &DefinitionEditor::save);
 }
 
-void DefinitionEditor::save() {
-    this->scene->text = this->toPlainText().toStdString();
-}
+void DefinitionEditor::save() { this->scene->text = this->toPlainText().toStdString(); }
 
-
-FloorScene::FloorScene(Floor* floor,QUndoStack* undoStack, QObject* parent) : QGraphicsScene(parent), floor(floor), undoStack(undoStack) {
+SceneEditor::SceneEditor(Floor* floor, QUndoStack* undoStack, QObject* parent)
+    : QGraphicsScene(parent), floor(floor), undoStack(undoStack) {
     setSceneRect(0, 0, getImWidth(), getImHeight());
 }
 
-void FloorScene::drawBackground(QPainter* painter, const QRectF& rect) {
-    QColor borderColor(GREEN),
-           fillColor(GRAY),
-           gridColor("#a9a9a9");
+void SceneEditor::drawBackground(QPainter* painter, const QRectF& rect) {
+    QColor borderColor(GREEN), fillColor(GRAY), gridColor("#a9a9a9");
     painter->setPen(Qt::NoPen);
     painter->setBrush(QBrush(fillColor));
-    painter->drawRect(xPos_to_px(0) , yPos_to_px(0),
-            m_to_px(floor->getWidth()), m_to_px(floor->getHeight()));
+    painter->drawRect(xPos_to_px(0), yPos_to_px(0), m_to_px(floor->getWidth()),
+                      m_to_px(floor->getHeight()));
     painter->setPen(QPen(gridColor, 2));
     for (int x = xPos_to_px(1); x < xPos_to_px(floor->getWidth()); x += m_to_px(1)) {
-        if (x == xPos_to_px(floor->getWidth()/2.))
-            continue;
+        if (x == xPos_to_px(floor->getWidth() / 2.)) continue;
         painter->drawLine(x, yPos_to_px(0), x, yPos_to_px(floor->getHeight()));
     }
     for (int y = yPos_to_px(1); y < yPos_to_px(floor->getHeight()); y += m_to_px(1)) {
-        if (y == yPos_to_px(floor->getHeight()/2.))
-            continue;
+        if (y == yPos_to_px(floor->getHeight() / 2.)) continue;
         painter->drawLine(xPos_to_px(0), y, xPos_to_px(floor->getWidth()), y);
     }
     painter->setPen(QPen(borderColor, 5));
     painter->setBrush(Qt::NoBrush);
-    painter->drawRect(xPos_to_px(0), yPos_to_px(0), m_to_px(floor->getWidth()), m_to_px(floor->getHeight()));
-    painter->drawLine(xPos_to_px(0), yPos_to_px(floor->getHeight()/2.), xPos_to_px(floor->getWidth()), yPos_to_px(floor->getHeight()/2.));
-    painter->drawLine(xPos_to_px(floor->getWidth()/2.), yPos_to_px(0), xPos_to_px(floor->getWidth()/2.), yPos_to_px(floor->getHeight()));
+    painter->drawRect(xPos_to_px(0), yPos_to_px(0), m_to_px(floor->getWidth()),
+                      m_to_px(floor->getHeight()));
+    painter->drawLine(xPos_to_px(0), yPos_to_px(floor->getHeight() / 2.),
+                      xPos_to_px(floor->getWidth()), yPos_to_px(floor->getHeight() / 2.));
+    painter->drawLine(xPos_to_px(floor->getWidth() / 2.), yPos_to_px(0),
+                      xPos_to_px(floor->getWidth() / 2.), yPos_to_px(floor->getHeight()));
 
     QFont voHiFont = painter->font();
-    voHiFont.setPixelSize(PX_M*.45);
+    voHiFont.setPixelSize(PX_M * .45);
     painter->setPen(QPen(gridColor));
     painter->setFont(voHiFont);
     if (topUp) {
         drawTopLabel(painter, "Vorne");
         drawBottomLabel(painter, "Hinten");
-    }
-    else {
+    } else {
         drawTopLabel(painter, "Hinten");
         drawBottomLabel(painter, "Vorne");
     }
 }
 
-void FloorScene::drawForeground(QPainter* painter, const QRectF&) {
+void SceneEditor::drawForeground(QPainter* painter, const QRectF&) {
     QFont annotationFont = painter->font();
     annotationFont.setPixelSize(PX_M * .3);
     QFontMetrics fm(annotationFont);
@@ -836,40 +845,46 @@ void FloorScene::drawForeground(QPainter* painter, const QRectF&) {
         if (position->y != 0) {
             QString text = QString::number(std::abs(position->y));
             int textWidth = fm.horizontalAdvance(text);
-            int drawY = y - fm.height()/2. + fm.ascent();
+            int drawY = y - fm.height() / 2. + fm.ascent();
             painter->drawText(xPos_to_px(0) + annotationOffset, drawY, text);
-            painter->drawText(xPos_to_px(floor->getWidth()) - annotationOffset - textWidth, drawY, text);
+            painter->drawText(xPos_to_px(floor->getWidth()) - annotationOffset - textWidth, drawY,
+                              text);
         }
         if (position->x != 0) {
             QString text = QString::number(std::abs(position->x));
             int textWidth = fm.horizontalAdvance(text);
-            int drawX = x - textWidth/2.;
+            int drawX = x - textWidth / 2.;
             painter->drawText(drawX, yPos_to_px(0) + fm.ascent(), text);
             painter->drawText(drawX, yPos_to_px(floor->getHeight()) - fm.descent(), text);
         }
     }
 }
 
-void FloorScene::drawTopLabel(QPainter* painter, QString label) const {
-    painter->drawText(
-            QRect(xPos_to_px(0), 0, m_to_px(floor->getWidth()), BORDER),
-            Qt::AlignHCenter | Qt::AlignVCenter,
-            label
-            );
+void SceneEditor::drawTopLabel(QPainter* painter, QString label) const {
+    painter->drawText(QRect(xPos_to_px(0), 0, m_to_px(floor->getWidth()), BORDER),
+                      Qt::AlignHCenter | Qt::AlignVCenter, label);
 }
 
-void FloorScene::drawBottomLabel(QPainter* painter, QString label) const {
+void SceneEditor::drawBottomLabel(QPainter* painter, QString label) const {
     painter->drawText(
-            QRect(xPos_to_px(0), yPos_to_px(floor->getHeight()), m_to_px(floor->getWidth()), BORDER),
-            Qt::AlignHCenter | Qt::AlignVCenter,
-            label
-            );
+        QRect(xPos_to_px(0), yPos_to_px(floor->getHeight()), m_to_px(floor->getWidth()), BORDER),
+        Qt::AlignHCenter | Qt::AlignVCenter, label);
 }
 
-PositionItem::PositionItem(Position* position, Floor* floor, Dancer *dancer,
-    bool *topUp, bool *dragging, double *gridSize) :
-    position(position), floor(floor), dancer(dancer), topUp(topUp),
-    dragging(dragging), gridSize(gridSize) {
+void SceneEditor::clear() {
+    positions.clear();
+    selectedPositionItem = nullptr;
+    QGraphicsScene::clear();
+}
+
+PositionItem::PositionItem(Position* position, Floor* floor, Dancer* dancer, bool* topUp,
+                           bool* dragging, double* gridSize)
+    : position(position),
+      floor(floor),
+      dancer(dancer),
+      topUp(topUp),
+      dragging(dragging),
+      gridSize(gridSize) {
     setFlag(QGraphicsItem::ItemIsMovable);
     setFlag(QGraphicsItem::ItemIsSelectable);
     setFlag(QGraphicsItem::ItemSendsGeometryChanges);
@@ -889,17 +904,15 @@ void PositionItem::drawDancerBody(QPainter* painter, Dancer* dancer, int x, int 
     QColor col(dancer->color.c_str());
     painter->setPen(Qt::NoPen);
     painter->setBrush(QBrush(col));
-    double centerX = x - diameter/2.,
-           centerY = y - diameter/2.;
+    double centerX = x - diameter / 2., centerY = y - diameter / 2.;
     painter->drawEllipse(centerX, centerY, diameter, diameter);
     painter->setPen(QPen(getTextColor(col)));
     painter->setFont(dancerFont);
-    painter->drawText(QRect(centerX, centerY, diameter, diameter),
-                       Qt::AlignCenter, dancer->shortcut.c_str());
-
+    painter->drawText(QRect(centerX, centerY, diameter, diameter), Qt::AlignCenter,
+                      dancer->shortcut.c_str());
 }
 
-void PositionItem::paint(QPainter* painter, const QStyleOptionGraphicsItem *style, QWidget*) {
+void PositionItem::paint(QPainter* painter, const QStyleOptionGraphicsItem* style, QWidget*) {
     drawDancerBody(painter, dancer);
 
     if (style->state & QStyle::State_Selected) {
@@ -922,8 +935,8 @@ void PositionItem::setExactY(double meters) {
     if (scene()) scene()->update();
 }
 
-void FloorScene::mousePressEvent(QGraphicsSceneMouseEvent* event) {
-    QGraphicsScene::mousePressEvent(event);   // let Qt resolve the click/selection first
+void SceneEditor::mousePressEvent(QGraphicsSceneMouseEvent* event) {
+    QGraphicsScene::mousePressEvent(event);  // let Qt resolve the click/selection first
     dragging = true;
     dragStartPositions.clear();
     for (QGraphicsItem* item : selectedItems()) {
@@ -933,14 +946,17 @@ void FloorScene::mousePressEvent(QGraphicsSceneMouseEvent* event) {
     }
 }
 
-void FloorScene::mouseReleaseEvent(QGraphicsSceneMouseEvent* event) {
+void SceneEditor::mouseReleaseEvent(QGraphicsSceneMouseEvent* event) {
     QGraphicsScene::mouseReleaseEvent(event);
     dragging = false;
 
     if (undoStack && !dragStartPositions.isEmpty()) {
         bool anyMoved = false;
         for (auto it = dragStartPositions.begin(); it != dragStartPositions.end(); ++it) {
-            if (it.value() != it.key()->pos()) { anyMoved = true; break; }
+            if (it.value() != it.key()->pos()) {
+                anyMoved = true;
+                break;
+            }
         }
         if (anyMoved) {
             undoStack->beginMacro(tr("Move dancers"));
@@ -1002,7 +1018,7 @@ QVariant PositionItem::itemChange(GraphicsItemChange change, const QVariant& val
             position->x = floor->SizeLeft - xMeter;
             position->y = yMeter - floor->SizeBack;
         }
-        if (auto* fs = dynamic_cast<FloorScene*>(scene())) {
+        if (auto* fs = dynamic_cast<SceneEditor*>(scene())) {
             emit fs->positionMoved(this);
         }
         if (scene()) scene()->update();
@@ -1011,13 +1027,14 @@ QVariant PositionItem::itemChange(GraphicsItemChange change, const QVariant& val
     return QGraphicsItem::itemChange(change, value);
 }
 
-CanvasView::CanvasView(QGraphicsScene* scene, QWidget* parent)
-    : QGraphicsView(scene, parent) {}
+ResizableQGraphicsView::ResizableQGraphicsView(QGraphicsScene* scene, QWidget* parent) : QGraphicsView(scene, parent) {
+    setRenderHint(QPainter::Antialiasing);
+    setDragMode(QGraphicsView::RubberBandDrag);
+}
 
-void CanvasView::resizeEvent(QResizeEvent* event) {
+void ResizableQGraphicsView::resizeEvent(QResizeEvent* event) {
     QGraphicsView::resizeEvent(event);
     if (scene()) {
         fitInView(scene()->sceneRect(), Qt::KeepAspectRatio);
     }
 }
-

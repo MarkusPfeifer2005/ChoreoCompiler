@@ -52,8 +52,8 @@
 
 namespace fs = std::filesystem;
 
-FloorScene* buildSceneForExport(Scene& scene, Floor& floor, int roleID, bool topUp) {
-    FloorScene* exportScene = new FloorScene(&floor, nullptr);
+SceneEditor* buildSceneForExport(Scene& scene, Floor& floor, int roleID, bool topUp) {
+    SceneEditor* exportScene = new SceneEditor(&floor, nullptr);
     exportScene->topUp = topUp;
     for (auto& pos : scene.positions) {
         PositionItem* item = new PositionItem(&pos, &floor, pos.dancer.get(), &exportScene->topUp,
@@ -69,7 +69,7 @@ FloorScene* buildSceneForExport(Scene& scene, Floor& floor, int roleID, bool top
 }
 
 QImage renderSceneToImage(Scene& scene, Floor& floor, int roleID = -1, bool topUp = true) {
-    std::unique_ptr<FloorScene> exportScene{buildSceneForExport(scene, floor, roleID, topUp)};
+    std::unique_ptr<SceneEditor> exportScene{buildSceneForExport(scene, floor, roleID, topUp)};
     QImage image(exportScene->sceneRect().width(), exportScene->sceneRect().height(), QImage::Format_ARGB32);
     image.fill(Qt::white);
     QPainter painter(&image);
@@ -80,7 +80,7 @@ QImage renderSceneToImage(Scene& scene, Floor& floor, int roleID = -1, bool topU
 }
 
 void renderSceneToPdf(QPainter& painter, Scene& scene, Floor& floor, QPointF targetTopLeft, int roleID = -1, bool topUp = true) {
-    FloorScene* exportScene = buildSceneForExport(scene, floor, roleID, topUp);
+    SceneEditor* exportScene = buildSceneForExport(scene, floor, roleID, topUp);
     QRectF sceneRect = exportScene->sceneRect();
     QRectF targetRect(targetTopLeft, sceneRect.size());   // native size, positioned at targetTopLeft — same semantics as the old setXYOffset
     exportScene->render(&painter, targetRect, sceneRect);
