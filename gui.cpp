@@ -34,6 +34,7 @@
 #include "dance.h"
 #include "export.h"
 #include "gui.h"
+#include "nlohmann/detail/value_t.hpp"
 #include "utils.h"
 
 double m_to_px(double meter) { return meter * PX_M; }
@@ -858,7 +859,11 @@ DefinitionEditor::DefinitionEditor(QWidget* parent) : QTextEdit(parent) {
     connect(this, &DefinitionEditor::textChanged, this, &DefinitionEditor::save);
 }
 
-void DefinitionEditor::save() { this->scene->text = this->toPlainText().toStdString(); }
+void DefinitionEditor::save() {
+    if (scene != nullptr) {
+        this->scene->text = this->toPlainText().toStdString();
+    }
+}
 
 SceneEditor::SceneEditor(Floor* floor,std::vector<std::shared_ptr<Dancer>>*dancers, QUndoStack* undoStack, QObject* parent)
     : QGraphicsScene(parent), floor(floor), undoStack(undoStack) {
