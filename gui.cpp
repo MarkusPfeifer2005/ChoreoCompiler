@@ -25,7 +25,7 @@
 #include <QStyle>
 #include <QToolBar>
 #include <QGraphicsSceneContextMenuEvent>
-#include <algorithm>  // std::max
+#include <algorithm>
 #include <fstream>
 #include <memory>
 #include <vector>
@@ -34,7 +34,6 @@
 #include "dance.h"
 #include "export.h"
 #include "gui.h"
-#include "nlohmann/detail/value_t.hpp"
 #include "utils.h"
 
 double m_to_px(double meter) { return meter * PX_M; }
@@ -661,14 +660,13 @@ void SceneEditor::contextMenuEvent(QGraphicsSceneContextMenuEvent *event) {
 }
 
 void MainWindow::onRemovePosition(PositionItem *posItem) {
-    Scene *currentScene = editor->scene;
     Position *position = posItem->getPosition();
-    auto &positions = currentScene->positions;
+    auto &positions = openScene->positions;
     auto it = std::find_if(positions.begin(), positions.end(), [position](Position &p){return &p == position;});
     if (it != positions.end()) {
         positions.erase(it);
     }
-    sceneEditor->load(editor->scene);
+    sceneEditor->load(openScene);
 }
 
 void MainWindow::onGridSizeChanged(int index) {
@@ -736,18 +734,26 @@ void SceneEditor::load(Scene* scene) {
     update();
 }
 
+void DefinitionEditor::load(std::string *definitionText) {
+    if (definitionText==nullptr) {
+        return;
+    }
+    this->definitionText = definitionText;
+    this->setText(QString::fromStdString(*this->definitionText));
+}
+
 void MainWindow::loadSceneByIndex(int index) {
     if (index < 0 || index >= static_cast<int>(choreo.scenes.size())) {
         return;
     }
 
-    this->editor->scene = &this->choreo.scenes[index];
-    this->editor->setText(QString::fromStdString(this->editor->scene->text));
+    openScene = &choreo.scenes[index];
+    editor->load(&openScene->text);
 
     positionStatusWidget->hide();
 
     undoStack->clear();
-    sceneEditor->load(this->editor->scene);
+    sceneEditor->load(openScene);
 }
 
 void MainWindow::loadScene(QListWidgetItem* item) {
@@ -775,7 +781,7 @@ void MainWindow::openRoleDialog() {
     RoleDialog dialog(&choreo.roles, &choreo.dancers, this);
     dialog.exec();
     int row = outline->currentRow();
-    if (editor->scene && row >= 0) {
+    if (openScene && row >= 0) {
         loadSceneByIndex(row);
     }
 }
@@ -784,7 +790,7 @@ void MainWindow::openDancerDialog() {
     DancerDialog dialog(&choreo.dancers, &choreo.roles, this);
     dialog.exec();
     int row = outline->currentRow();
-    if (editor->scene && row >= 0) {
+    if (openScene && row >= 0) {
         loadSceneByIndex(row);
     }
 }
@@ -835,8 +841,8 @@ void MainWindow::onSelectionCleared() {
 
 void MainWindow::addPosition(Dancer* dancer, double x , double y) {
     Position position{x, y, dancer->id, this->choreo.dancers};
-    editor->scene->positions.push_back(position);
-    sceneEditor->load(editor->scene);
+    openScene->positions.push_back(position);
+    sceneEditor->load(openScene);
 }
 
 void SceneEditor::onManualXChanged(double value) {
@@ -860,8 +866,8 @@ DefinitionEditor::DefinitionEditor(QWidget* parent) : QTextEdit(parent) {
 }
 
 void DefinitionEditor::save() {
-    if (scene != nullptr) {
-        this->scene->text = this->toPlainText().toStdString();
+    if (definitionText != nullptr) {
+        *definitionText = this->toPlainText().toStdString();
     }
 }
 

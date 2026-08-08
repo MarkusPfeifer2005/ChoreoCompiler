@@ -39,6 +39,7 @@
 #include <QUndoCommand>
 #include <QUndoStack>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "config.h"
@@ -142,7 +143,8 @@ class DefinitionEditor : public QTextEdit {
     Q_OBJECT
    public:
     DefinitionEditor(QWidget* = nullptr);
-    Scene* scene = nullptr;
+    std::string *definitionText = nullptr;
+    void load(std::string*);
    private slots:
     void save();
 };
@@ -192,6 +194,7 @@ class MovePositionCommand : public QUndoCommand {
     PositionItem* item;
     QPointF oldPos, newPos;
 };
+
 
 class SceneEditor : public QGraphicsScene {
     Q_OBJECT
@@ -255,6 +258,7 @@ class MainWindow : public QMainWindow {
     OutlineWidget* outline = nullptr;
     SceneEditor* sceneEditor = nullptr;
     ResizableQGraphicsView* rGraphicsView = nullptr;
+    Scene *openScene = nullptr;
    private slots:
     void newFile();
     void openFile();
