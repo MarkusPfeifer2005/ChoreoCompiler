@@ -27,6 +27,7 @@
 #include <QGraphicsSceneContextMenuEvent>
 #include <algorithm>
 #include <fstream>
+#include <iterator>
 #include <memory>
 #include <vector>
 
@@ -42,11 +43,67 @@ double xPos_to_px(double meter) { return BORDER + meter * PX_M; }
 
 double yPos_to_px(double meter) { return BORDER + meter * PX_M; }
 
-MovePositionCommand::MovePositionCommand(PositionItem* item, QPointF oldPos, QPointF newPos)
-    : item(item), oldPos(oldPos), newPos(newPos) {}
+MovePositionCommand::MovePositionCommand(size_t sceneIndex,
+        size_t positionId, QPointF oldPos, QPointF newPos, SceneEditor *sceneEditor)
+    : sceneIndex(sceneIndex),
+      positionId(positionId),
+      oldPos(oldPos),
+      newPos(newPos),
+      sceneEditor(sceneEditor){
+          setText(QObject::tr("Move position"));
+      }
 
-void MovePositionCommand::undo() { item->setPos(oldPos); }
-void MovePositionCommand::redo() { item->setPos(newPos); }
+void MovePositionCommand::redo() {
+    if (sceneEditor->getCurentSceneIndex() != sceneIndex) {
+        sceneEditor->load(sceneIndex);
+    }
+    for (auto &posItem : sceneEditor->positionItems) {
+        if (posItem->getPosition()->dancer->id == positionId) {
+            posItem->setPos(newPos);
+            return;
+        }
+    }
+}
+
+void MovePositionCommand::undo() {
+    if (sceneEditor->getCurentSceneIndex() != sceneIndex) {
+        sceneEditor->load(sceneIndex);
+    }
+    for (auto &posItem : sceneEditor->positionItems) {
+        if (posItem->getPosition()->dancer->id == positionId) {
+            posItem->setPos(oldPos);
+            return;
+        }
+    }
+}
+
+RemovePositionCommand::RemovePositionCommand(Scene* scene, SceneEditor *sceneEditor, size_t index) :
+    scene(scene), sceneEditor(sceneEditor), index(index) {
+        setText(QObject::tr("Remove position"));
+    }
+
+void RemovePositionCommand::redo() {
+    removedPosition = scene->positions[index];
+    scene->positions.erase(scene->positions.begin() + index);
+    sceneEditor->load(scene);
+}
+
+void RemovePositionCommand::undo() {
+    scene->positions.insert(scene->positions.begin() + index, removedPosition);
+    sceneEditor->load(scene);
+}
+
+
+void MainWindow::onRemovePosition(PositionItem *posItem) {
+    Position *position = posItem->getPosition();
+    auto &positions = openScene->positions;
+    auto it = std::find_if(positions.begin(), positions.end(), [position](Position &p){return &p == position;});
+    if (it != positions.end()) {
+        size_t index = std::distance(positions.begin(), it);
+        undoStack->push(new RemovePositionCommand(this->openScene, this->sceneEditor, index));
+    }
+}
+
 
 // --- RoleListWidget ---
 
@@ -462,7 +519,8 @@ MainWindow::MainWindow(QMainWindow* parent, Qt::WindowFlags flags) : QMainWindow
     setWindowTitle("CoCo");
 
     undoStack = new QUndoStack(this);
-    sceneEditor = new SceneEditor(&this->choreo.floor, &this->choreo.dancers, undoStack, this);
+    sceneEditor = new SceneEditor(&choreo.floor, openScene,
+            &choreo.scenes, &choreo.dancers, undoStack, this);
     rGraphicsView = new ResizableQGraphicsView(sceneEditor, this);
     connect(sceneEditor, &SceneEditor::removePosition,
             this, &MainWindow::onRemovePosition);
@@ -659,16 +717,6 @@ void SceneEditor::contextMenuEvent(QGraphicsSceneContextMenuEvent *event) {
     menu.exec(event->screenPos());
 }
 
-void MainWindow::onRemovePosition(PositionItem *posItem) {
-    Position *position = posItem->getPosition();
-    auto &positions = openScene->positions;
-    auto it = std::find_if(positions.begin(), positions.end(), [position](Position &p){return &p == position;});
-    if (it != positions.end()) {
-        positions.erase(it);
-    }
-    sceneEditor->load(openScene);
-}
-
 void MainWindow::onGridSizeChanged(int index) {
     sceneEditor->gridSize = gridSizeCombo->itemData(index).toDouble();
 }
@@ -720,9 +768,9 @@ void MainWindow::pdfExport() {
     generatePDF(this->choreo, fileName.toStdString(), false);
 }
 
-void SceneEditor::load(Scene* scene) {
+void SceneEditor::reload() {
     clear();
-    for (auto& pos : scene->positions) {
+    for (auto& pos : currentScene->positions) {
         PositionItem* posItem =
             new PositionItem(&pos, floor, pos.dancer.get(), &this->topUp,
                              &this->dragging, &this->gridSize);
@@ -730,8 +778,23 @@ void SceneEditor::load(Scene* scene) {
         posItem->setZValue(pos.dancer->role->zIndex);
         addItem(posItem);
         this->positions.push_back(&pos);
+        this->positionItems.push_back(posItem);
     }
     update();
+}
+
+void SceneEditor::load(size_t index) {
+    if (!scenes || index >= scenes->size()) return;
+    currentSceneIndex = index;
+    currentScene = &(*scenes)[index];
+    reload();
+}
+
+void SceneEditor::load(Scene* scene) {
+    auto it = std::find_if(scenes->begin(), scenes->end(),
+                            [scene](Scene& s) { return &s == scene; });
+    if (it == scenes->end()) return;
+    load(static_cast<size_t>(std::distance(scenes->begin(), it)));
 }
 
 void DefinitionEditor::load(std::string *definitionText) {
@@ -752,7 +815,7 @@ void MainWindow::loadSceneByIndex(int index) {
 
     positionStatusWidget->hide();
 
-    undoStack->clear();
+    //undoStack->clear();
     sceneEditor->load(openScene);
 }
 
@@ -871,8 +934,19 @@ void DefinitionEditor::save() {
     }
 }
 
-SceneEditor::SceneEditor(Floor* floor,std::vector<std::shared_ptr<Dancer>>*dancers, QUndoStack* undoStack, QObject* parent)
-    : QGraphicsScene(parent), floor(floor), undoStack(undoStack) {
+SceneEditor::SceneEditor(
+        Floor* floor,
+        Scene* currentScene,
+        std::vector<Scene>* scenes,
+        std::vector<std::shared_ptr<Dancer>>*dancers,
+        QUndoStack* undoStack,
+        QObject* parent
+    ) :
+    QGraphicsScene(parent),
+    floor(floor),
+    currentScene(currentScene),
+    scenes(scenes),
+    undoStack(undoStack) {
     setSceneRect(0, 0, getImWidth(), getImHeight());
 }
 
@@ -963,6 +1037,7 @@ void SceneEditor::drawBottomLabel(QPainter* painter, QString label) const {
 
 void SceneEditor::clear() {
     positions.clear();
+    positionItems.clear();
     selectedPositionItem = nullptr;
     QGraphicsScene::clear();
 }
@@ -1053,8 +1128,13 @@ void SceneEditor::mouseReleaseEvent(QGraphicsSceneMouseEvent* event) {
         if (anyMoved) {
             undoStack->beginMacro(tr("Move dancers"));
             for (auto it = dragStartPositions.begin(); it != dragStartPositions.end(); ++it) {
-                if (it.value() != it.key()->pos()) {
-                    undoStack->push(new MovePositionCommand(it.key(), it.value(), it.key()->pos()));
+                PositionItem* posItem = it.key();
+                QPointF oldPos = it.value();
+                QPointF newPos = posItem->pos();
+                if (oldPos != newPos) {
+                    undoStack->push(new MovePositionCommand(
+                        currentSceneIndex, posItem->getPosition()->dancer->id,
+                        oldPos, newPos, this));
                 }
             }
             undoStack->endMacro();

@@ -10,6 +10,7 @@
 #include <qmainwindow.h>
 #include <qpaintdevice.h>
 #include <qpainter.h>
+#include <qpoint.h>
 #include <qstyleoption.h>
 #include <qtextedit.h>
 #include <qtmetamacros.h>
@@ -38,6 +39,7 @@
 #include <QTextEdit>
 #include <QUndoCommand>
 #include <QUndoStack>
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <vector>
@@ -184,30 +186,25 @@ class PositionItem : public QGraphicsItem {
     double* gridSize = nullptr;
 };
 
-class MovePositionCommand : public QUndoCommand {
-   public:
-    MovePositionCommand(PositionItem* item, QPointF oldPos, QPointF newPos);
-    void undo() override;
-    void redo() override;
-
-   private:
-    PositionItem* item;
-    QPointF oldPos, newPos;
-};
-
-
 class SceneEditor : public QGraphicsScene {
     Q_OBJECT
    public:
-    SceneEditor(Floor*, std::vector<std::shared_ptr<Dancer>>*, QUndoStack*, QObject* = nullptr);
+    SceneEditor(Floor*,
+                Scene*,
+                std::vector<Scene>*,
+                std::vector<std::shared_ptr<Dancer>>*, QUndoStack*, QObject* = nullptr);
     void setXYOffset(int, int);
     bool topUp = false;
     bool dragging = false;
     double gridSize = .5;
     void clear();
     std::vector<Position*> positions;
+    std::vector<PositionItem*> positionItems;
+    void reload();
     void load(Scene*);
+    void load(size_t);
     std::vector<std::shared_ptr<Dancer>> *dancers = nullptr;
+    size_t getCurentSceneIndex() {return currentSceneIndex;};
    signals:
     void positionMoved(PositionItem*);
     void singlePositionSelected(QString, double, double);
@@ -225,6 +222,9 @@ class SceneEditor : public QGraphicsScene {
 
    private:
     Floor* floor = nullptr;
+    Scene* currentScene = nullptr;
+    size_t currentSceneIndex = 0;
+    std::vector<Scene> *scenes = nullptr;
     QUndoStack* undoStack = nullptr;
     PositionItem* selectedPositionItem = nullptr;
     QMap<PositionItem*, QPointF> dragStartPositions;
@@ -237,6 +237,33 @@ class SceneEditor : public QGraphicsScene {
     void onManualYChanged(double);
     void onSelectedPositionsChanged();
     void onPositionMoved(PositionItem*);
+};
+
+class MovePositionCommand : public QUndoCommand {
+   public:
+    MovePositionCommand(size_t, size_t, QPointF, QPointF, SceneEditor*);
+    void undo() override;
+    void redo() override;
+
+   private:
+    SceneEditor *sceneEditor = nullptr;
+    size_t sceneIndex = 0,
+           positionId = 0;
+    QPointF oldPos,
+            newPos;
+};
+
+class RemovePositionCommand : public QUndoCommand {
+    public:
+    RemovePositionCommand(Scene*, SceneEditor*, size_t);
+    void undo() override;
+    void redo() override;
+
+    private:
+    size_t index = 0;
+    Scene* scene = nullptr;
+    SceneEditor* sceneEditor = nullptr;
+    Position removedPosition;
 };
 
 class MainWindow : public QMainWindow {

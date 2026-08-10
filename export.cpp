@@ -54,7 +54,7 @@
 namespace fs = std::filesystem;
 
 SceneEditor* buildSceneForExport(Scene& scene, Floor& floor, int roleID, bool topUp) {
-    SceneEditor* exportScene = new SceneEditor(&floor, nullptr, nullptr);
+    SceneEditor* exportScene = new SceneEditor(&floor, nullptr, nullptr, nullptr, nullptr);
     exportScene->topUp = topUp;
     for (auto& pos : scene.positions) {
         PositionItem* item = new PositionItem(&pos, &floor, pos.dancer.get(), &exportScene->topUp,

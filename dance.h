@@ -87,6 +87,7 @@ public:
            y;
     Position(json, std::vector<std::shared_ptr<Dancer>>&);
     Position(double, double, int, std::vector<std::shared_ptr<Dancer>>&);
+    Position() = default;
 };
 
 void to_json(json&, const Position&);
