@@ -266,6 +266,18 @@ class RemovePositionCommand : public QUndoCommand {
     Position removedPosition;
 };
 
+class AddPositionCommand : public QUndoCommand {
+    public:
+    AddPositionCommand(Scene*, SceneEditor*, Position);
+    void undo() override;
+    void redo() override;
+
+    private:
+    Scene* scene = nullptr;
+    SceneEditor* sceneEditor = nullptr;
+    Position position;
+};
+
 class MainWindow : public QMainWindow {
     Q_OBJECT
    public:

@@ -9,6 +9,7 @@
 #include <qlistwidget.h>
 #include <qmainwindow.h>
 #include <qnamespace.h>
+#include <qobject.h>
 #include <qpaintdevice.h>
 #include <qpainter.h>
 #include <qstyleoption.h>
@@ -91,6 +92,39 @@ void RemovePositionCommand::redo() {
 void RemovePositionCommand::undo() {
     scene->positions.insert(scene->positions.begin() + index, removedPosition);
     sceneEditor->load(scene);
+}
+
+AddPositionCommand::AddPositionCommand(Scene *scene, SceneEditor *sceneEditor, Position position) :
+    scene(scene), sceneEditor(sceneEditor), position(position) {
+        setText(QObject::tr("Add Position"));
+    }
+
+void AddPositionCommand::redo() {
+    if (scene == nullptr || sceneEditor == nullptr) return;
+    scene->positions.push_back(position);
+    sceneEditor->reload();
+}
+
+void AddPositionCommand::undo() {
+    if (scene == nullptr || sceneEditor == nullptr) return;
+    auto &positions = scene->positions;
+    size_t dancerId = position.dancer->id;
+    auto it = std::find_if(positions.begin(), positions.end(), [dancerId](Position &p){return p.dancer->id == dancerId;});
+    if (it != positions.end()) {
+        positions.erase(it);
+    }
+    sceneEditor->reload();
+}
+
+/* OLD:
+void MainWindow::addPosition(Dancer* dancer, double x , double y) {
+    Position position{x, y, dancer->id, this->choreo.dancers};
+    openScene->positions.push_back(position);
+    sceneEditor->load(openScene);
+}*/
+void MainWindow::addPosition(Dancer* dancer, double x , double y) {
+    Position position{x, y, dancer->id, this->choreo.dancers};
+    undoStack->push(new AddPositionCommand(this->openScene, this->sceneEditor, position));
 }
 
 
@@ -900,12 +934,6 @@ void MainWindow::onSinglePositionSelected(QString text, double x, double y) {
 
 void MainWindow::onSelectionCleared() {
     positionStatusWidget->hide();
-}
-
-void MainWindow::addPosition(Dancer* dancer, double x , double y) {
-    Position position{x, y, dancer->id, this->choreo.dancers};
-    openScene->positions.push_back(position);
-    sceneEditor->load(openScene);
 }
 
 void SceneEditor::onManualXChanged(double value) {
