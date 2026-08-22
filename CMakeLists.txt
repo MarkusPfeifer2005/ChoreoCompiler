@@ -30,3 +30,15 @@ target_include_directories(coco PRIVATE "${podofo_BINARY_DIR}/src/podofo/podofo/
 target_link_libraries(coco PRIVATE Qt6::Widgets Qt6::Pdf nlohmann_json::nlohmann_json podofo::podofo)
 
 install(TARGETS coco DESTINATION bin)
+
+set(CPACK_PACKAGE_NAME "coco")
+set(CPACK_PACKAGE_VERSION "1.0.0-alpha")
+set(CPACK_PACKAGE_CONTACT "CoCo Project <https://github.com/MarkusPfeifer2005/ChoreoCompiler>")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Choreography editing and compilation tool")
+
+set(CPACK_GENERATOR "DEB")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "libqt6core6, libqt6gui6, libqt6widgets6, libqt6pdf6")
+set(CPACK_DEBIAN_PACKAGE_SECTION "graphics")
+set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
+
+include(CPack)
