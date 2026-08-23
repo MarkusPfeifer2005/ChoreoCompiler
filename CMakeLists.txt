@@ -24,7 +24,16 @@ FetchContent_MakeAvailable(podofo)
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets Pdf)
 
-add_executable(coco main.cpp dance.cpp utils.cpp gui.cpp export.cpp)
+add_executable(coco MACOSX_BUNDLE main.cpp dance.cpp utils.cpp gui.cpp export.cpp)
+
+if(APPLE)
+    set_target_properties(coco PROPERTIES
+        MACOSX_BUNDLE_BUNDLE_NAME "CoCo"
+        MACOSX_BUNDLE_GUI_IDENTIFIER "at.markus.coco"
+        MACOSX_BUNDLE_BUNDLE_VERSION "1.0.0"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "1.0.0"
+    )
+endif()
 
 target_include_directories(coco PRIVATE "${podofo_BINARY_DIR}/src/podofo/podofo/auxiliary")
 target_link_libraries(coco PRIVATE Qt6::Widgets Qt6::Pdf nlohmann_json::nlohmann_json podofo::podofo)

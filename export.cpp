@@ -1,3 +1,4 @@
+#include <exception>
 #include <podofo/podofo.h>
 #include <qapplication.h>
 #include <qboxlayout.h>
